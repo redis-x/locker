@@ -12,43 +12,43 @@ import {
 export class RedisMultiLocker {
 	readonly redisClient: RedisClient;
 	readonly redis_key: string;
-	private ttl_ms: number;
-	private retry_interval_ms: number;
+	private ttl: number;
+	private retry_interval: number;
 	private retry_count: number;
 
 	/**
 	 * @param redisClient - Redis client (from `@kirick/redis-client` package)
 	 * @param namespace - Namespace to create keys in.
 	 * @param options -
-	 * @param options.ttl_ms - Default time to live in milliseconds.
-	 * @param options.retry_interval_ms - Interval between lock aquisition attempts in milliseconds.
+	 * @param options.ttl - Default time to live in milliseconds.
+	 * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
 	 * @param options.retry_count - Maximum number of lock aquisition attempts.
 	 */
 	constructor(
 		redisClient: RedisClient,
 		namespace: string,
 		options?: {
-			ttl_ms?: number,
-			retry_interval_ms?: number,
+			ttl?: number,
+			retry_interval?: number,
 			retry_count?: number,
 		},
 	) {
 		this.redisClient = redisClient;
 		this.redis_key = REDIS_PREFIX + namespace;
 
-		this.ttl_ms = options?.ttl_ms ?? 5000;
-		this.retry_interval_ms = options?.retry_interval_ms ?? 100;
+		this.ttl = options?.ttl ?? 5000;
+		this.retry_interval = options?.retry_interval ?? 100;
 		this.retry_count = options?.retry_count ?? 10;
 	}
 
 	/**
 	 * @param ids - IDs to lock in the namespace.
-	 * @param ttl_ms Time to live in milliseconds.
+	 * @param ttl Time to live in milliseconds.
 	 * @returns Lock object.
 	 */
 	async lock(
 		ids: (string | number)[] | Set<string | number>,
-		ttl_ms: number = this.ttl_ms,
+		ttl: number = this.ttl,
 	): Promise<RedisMultiLock> {
 		const token = randomBytes(32).toString('base64')
 			.replaceAll('/', '')
@@ -62,7 +62,7 @@ export class RedisMultiLocker {
 
 		const redis_script_arguments = [
 			String(Date.now()),
-			String(ttl_ms),
+			String(ttl),
 		];
 		if (Array.isArray(ids)) {
 			redis_script_arguments.push(
@@ -121,7 +121,7 @@ export class RedisMultiLocker {
 
 			// eslint-disable-next-line no-await-in-loop
 			await asyncTimeout(
-				this.retry_interval_ms,
+				this.retry_interval,
 			);
 		}
 
@@ -144,10 +144,10 @@ export class RedisMultiLock {
 
 	/**
 	 * Extends lock time.
-	 * @param time_ms - Time to extend in milliseconds.
+	 * @param time - Time to extend in milliseconds.
 	 * @returns -
 	 */
-	async extend(time_ms: number) {
+	async extend(time: number) {
 		const result = await this.locker.redisClient.EVAL(
 			`
 				local time_ms = tonumber(ARGV[1])
@@ -170,7 +170,7 @@ export class RedisMultiLock {
 					`${this.locker.redis_key}:${this.token}`,
 				],
 				arguments: [
-					String(time_ms),
+					String(time),
 				],
 			},
 		);

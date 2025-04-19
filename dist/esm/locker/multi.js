@@ -4,30 +4,30 @@ import { REDIS_PREFIX, asyncTimeout, } from '../utils.js';
 export class RedisMultiLocker {
     redisClient;
     redis_key;
-    ttl_ms;
-    retry_interval_ms;
+    ttl;
+    retry_interval;
     retry_count;
     /**
      * @param redisClient - Redis client (from `@kirick/redis-client` package)
      * @param namespace - Namespace to create keys in.
      * @param options -
-     * @param options.ttl_ms - Default time to live in milliseconds.
-     * @param options.retry_interval_ms - Interval between lock aquisition attempts in milliseconds.
+     * @param options.ttl - Default time to live in milliseconds.
+     * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
      * @param options.retry_count - Maximum number of lock aquisition attempts.
      */
     constructor(redisClient, namespace, options) {
         this.redisClient = redisClient;
         this.redis_key = REDIS_PREFIX + namespace;
-        this.ttl_ms = options?.ttl_ms ?? 5000;
-        this.retry_interval_ms = options?.retry_interval_ms ?? 100;
+        this.ttl = options?.ttl ?? 5000;
+        this.retry_interval = options?.retry_interval ?? 100;
         this.retry_count = options?.retry_count ?? 10;
     }
     /**
      * @param ids - IDs to lock in the namespace.
-     * @param ttl_ms Time to live in milliseconds.
+     * @param ttl Time to live in milliseconds.
      * @returns Lock object.
      */
-    async lock(ids, ttl_ms = this.ttl_ms) {
+    async lock(ids, ttl = this.ttl) {
         const token = randomBytes(32).toString('base64')
             .replaceAll('/', '')
             .replaceAll('+', '')
@@ -38,7 +38,7 @@ export class RedisMultiLocker {
         ];
         const redis_script_arguments = [
             String(Date.now()),
-            String(ttl_ms),
+            String(ttl),
         ];
         if (Array.isArray(ids)) {
             redis_script_arguments.push(...ids.map(String));
@@ -82,7 +82,7 @@ export class RedisMultiLocker {
                 return new RedisMultiLock(this, token);
             }
             // eslint-disable-next-line no-await-in-loop
-            await asyncTimeout(this.retry_interval_ms);
+            await asyncTimeout(this.retry_interval);
         }
         throw new RedisLockerAcquireError();
     }
@@ -100,10 +100,10 @@ export class RedisMultiLock {
     }
     /**
      * Extends lock time.
-     * @param time_ms - Time to extend in milliseconds.
+     * @param time - Time to extend in milliseconds.
      * @returns -
      */
-    async extend(time_ms) {
+    async extend(time) {
         const result = await this.locker.redisClient.EVAL(`
 				local time_ms = tonumber(ARGV[1])
 				local ts_ms_expire_old = redis.call('PEXPIRETIME', KEYS[2])
@@ -124,7 +124,7 @@ export class RedisMultiLock {
                 `${this.locker.redis_key}:${this.token}`,
             ],
             arguments: [
-                String(time_ms),
+                String(time),
             ],
         });
         if (result === 0) {

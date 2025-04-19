@@ -17,8 +17,8 @@ const locker = new RedisLocker(
 	redisClient,
 	'test',
 	{
-		ttl_ms: TIMEOUT,
-		retry_interval_ms: 0,
+		ttl: TIMEOUT,
+		retry_interval: 0,
 		retry_count: 1,
 	},
 );

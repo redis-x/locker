@@ -12,41 +12,41 @@ import {
 export class RedisLocker {
 	readonly redisClient: RedisClient;
 	readonly redis_key: string;
-	private ttl_ms: number;
-	private retry_interval_ms: number;
+	private ttl: number;
+	private retry_interval: number;
 	private retry_count: number;
 
 	/**
 	 * @param redisClient Redis client from `redis` package.
 	 * @param key Key to lock.
 	 * @param options -
-	 * @param options.ttl_ms Default time to live in milliseconds.
-	 * @param options.retry_interval_ms Interval between lock aquisition attempts in milliseconds.
-	 * @param options.retry_count Maximum number of lock aquisition attempts.
+	 * @param options.ttl - Default time to live in milliseconds.
+	 * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
+	 * @param options.retry_count - Maximum number of lock aquisition attempts.
 	 */
 	constructor(
 		redisClient: RedisClient,
 		key: string,
 		options?: {
-			ttl_ms?: number,
-			retry_interval_ms?: number,
+			ttl?: number,
+			retry_interval?: number,
 			retry_count?: number,
 		},
 	) {
 		this.redisClient = redisClient;
 		this.redis_key = REDIS_PREFIX + key;
 
-		this.ttl_ms = options?.ttl_ms ?? 5000;
-		this.retry_interval_ms = options?.retry_interval_ms ?? 100;
+		this.ttl = options?.ttl ?? 5000;
+		this.retry_interval = options?.retry_interval ?? 100;
 		this.retry_count = options?.retry_count ?? 10;
 	}
 
 	/**
 	 * Tries to aquire a lock. If not successful, throws an error.
-	 * @param ttl_ms Time to live in milliseconds.
+	 * @param ttl - Time to live in milliseconds.
 	 * @returns Lock object.
 	 */
-	async lock(ttl_ms: number = this.ttl_ms): Promise<RedisLock> {
+	async lock(ttl: number = this.ttl): Promise<RedisLock> {
 		const token = randomBytes(16).toString('base64');
 
 		for (
@@ -60,7 +60,7 @@ export class RedisLocker {
 				token,
 				{
 					NX: true,
-					PX: ttl_ms,
+					PX: ttl,
 				},
 			);
 
@@ -70,7 +70,7 @@ export class RedisLocker {
 
 			// eslint-disable-next-line no-await-in-loop
 			await asyncTimeout(
-				this.retry_interval_ms,
+				this.retry_interval,
 			);
 		}
 
@@ -93,10 +93,10 @@ export class RedisLock {
 
 	/**
 	 * Extends lock time.
-	 * @param time_ms Time to extend in milliseconds.
+	 * @param time Time to extend in milliseconds.
 	 * @returns -
 	 */
-	async extend(time_ms: number) {
+	async extend(time: number) {
 		const result = await this.locker.redisClient.EVAL(
 			'local pttl = redis.call("PTTL", KEYS[1]) if pttl > 0 and redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], pttl + tonumber(ARGV[2])) else return 0 end',
 			{
@@ -105,7 +105,7 @@ export class RedisLock {
 				],
 				arguments: [
 					this.token,
-					String(time_ms),
+					String(time),
 				],
 			},
 		);
