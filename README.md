@@ -1,14 +1,14 @@
 # @redis-x/locker
 
-A powerful and flexible distributed locking library for Redis with TypeScript support.
-
 [![npm version](https://img.shields.io/npm/v/@redis-x/locker.svg)](https://www.npmjs.com/package/@redis-x/locker)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![license](https://img.shields.io/npm/l/@redis-x/locker.svg?color=blue)](https://github.com/redis-x/locker/blob/main/LICENSE)
+
+A powerful and flexible distributed locking library for Redis with TypeScript support.
 
 ## Features
 
 - 🔒 **Robust Locking**: Reliable distributed locking mechanism built on Redis
-- ✨ **Multiple Lock Types**: Support for both single-resource and multi-resource locks
+- ✨ **Flexible**: Support for both single-resource and multi-resource locks
 - ⏱️ **Configurable TTL**: Set custom timeouts for your locks
 - 🔄 **Lock Extension**: Extend lock duration without releasing
 - 🔁 **Retry Logic**: Configurable retry mechanism for lock acquisition
@@ -17,13 +17,10 @@ A powerful and flexible distributed locking library for Redis with TypeScript su
 ## Installation
 
 ```bash
-# Using bun (recommended)
-bun add @redis-x/locker
-
-# Using pnpm
+bun i @redis-x/locker
+# or with pnpm
 pnpm add @redis-x/locker
-
-# Using npm
+# or with npm
 npm install @redis-x/locker
 ```
 
