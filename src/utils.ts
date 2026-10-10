@@ -6,14 +6,18 @@ import type {
 } from 'redis';
 export const REDIS_PREFIX = '@x:locker:';
 
-export type RedisClient = RedisClientType<RedisModules, RedisFunctions, RedisScripts>;
+export type RedisClient = RedisClientType<
+	RedisModules,
+	RedisFunctions,
+	RedisScripts
+>;
 
 /**
  * Resolves after a given time.
  * @param ms Time in milliseconds.
  * @returns -
  */
-export function asyncTimeout(ms: number) {
+export function asyncTimeout(ms: number): Promise<void> {
 	return new Promise((resolve) => {
 		setTimeout(resolve, ms);
 	});

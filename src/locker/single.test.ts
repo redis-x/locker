@@ -1,7 +1,4 @@
-import {
-	test,
-	expect,
-} from 'vitest';
+import { expect, test } from 'vitest';
 import { redisClient } from '../../test/redis.js';
 import {
 	RedisLock,
@@ -13,15 +10,11 @@ import { asyncTimeout } from '../utils.js';
 
 const TIMEOUT = 200;
 
-const locker = new RedisLocker(
-	redisClient,
-	'test',
-	{
-		ttl: TIMEOUT,
-		retry_interval: 0,
-		retry_count: 1,
-	},
-);
+const locker = new RedisLocker(redisClient, 'test', {
+	ttl: TIMEOUT,
+	retry_interval: 0,
+	retry_count: 1,
+});
 
 test('successful lock', async () => {
 	const lock = await locker.lock();

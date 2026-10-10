@@ -1,193 +1,67 @@
-"use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// dist/esm/main.js
-var main_exports = {};
-__export(main_exports, {
-  RedisLock: () => RedisLock,
-  RedisLocker: () => RedisLocker,
-  RedisLockerAcquireError: () => RedisLockerAcquireError,
-  RedisLockerReleaseError: () => RedisLockerReleaseError,
-  RedisMultiLock: () => RedisMultiLock,
-  RedisMultiLocker: () => RedisMultiLocker
-});
-module.exports = __toCommonJS(main_exports);
-
-// dist/esm/locker/single.js
-var import_node_crypto = require("node:crypto");
-
-// dist/esm/error.js
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+let node_crypto = require("node:crypto");
+//#region src/error.ts
 var RedisLockerAcquireError = class extends Error {
-  constructor() {
-    super("Failed to acquire lock");
-  }
+	constructor() {
+		super("Failed to acquire lock");
+	}
 };
 var RedisLockerReleaseError = class extends Error {
-  constructor() {
-    super("Failed to release lock");
-  }
+	constructor() {
+		super("Failed to release lock");
+	}
 };
-
-// dist/esm/utils.js
-var REDIS_PREFIX = "@x:locker:";
+//#endregion
+//#region src/utils.ts
+const REDIS_PREFIX = "@x:locker:";
+/**
+* Resolves after a given time.
+* @param ms Time in milliseconds.
+* @returns -
+*/
 function asyncTimeout(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
 }
-
-// dist/esm/locker/single.js
-var RedisLocker = class {
-  redisClient;
-  redis_key;
-  ttl;
-  retry_interval;
-  retry_count;
-  /**
-   * @param redisClient Redis client from `redis` package.
-   * @param key Key to lock.
-   * @param options -
-   * @param options.ttl - Default time to live in milliseconds.
-   * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-   * @param options.retry_count - Maximum number of lock aquisition attempts.
-   */
-  constructor(redisClient, key, options) {
-    this.redisClient = redisClient;
-    this.redis_key = REDIS_PREFIX + key;
-    this.ttl = options?.ttl ?? 5e3;
-    this.retry_interval = options?.retry_interval ?? 100;
-    this.retry_count = options?.retry_count ?? 10;
-  }
-  /**
-   * Tries to aquire a lock. If not successful, throws an error.
-   * @param ttl - Time to live in milliseconds.
-   * @returns Lock object.
-   */
-  async lock(ttl = this.ttl) {
-    const token = (0, import_node_crypto.randomBytes)(16).toString("base64");
-    for (let try_id = 0; try_id < this.retry_count; try_id++) {
-      const result = await this.redisClient.SET(this.redis_key, token, {
-        NX: true,
-        PX: ttl
-      });
-      if (result === "OK") {
-        return new RedisLock(this, token);
-      }
-      await asyncTimeout(this.retry_interval);
-    }
-    throw new RedisLockerAcquireError();
-  }
-};
-var RedisLock = class {
-  locker;
-  token;
-  /**
-   * @param locker RedisLocker instance.
-   * @param token Lock token.
-   */
-  constructor(locker, token) {
-    this.locker = locker;
-    this.token = token;
-  }
-  /**
-   * Extends lock time.
-   * @param time Time to extend in milliseconds.
-   * @returns -
-   */
-  async extend(time) {
-    const result = await this.locker.redisClient.EVAL('local pttl = redis.call("PTTL", KEYS[1]) if pttl > 0 and redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], pttl + tonumber(ARGV[2])) else return 0 end', {
-      keys: [
-        this.locker.redis_key
-      ],
-      arguments: [
-        this.token,
-        String(time)
-      ]
-    });
-    if (result === 0) {
-      throw new RedisLockerAcquireError();
-    }
-  }
-  /**
-   * Releases lock.
-   * @returns -
-   */
-  async release() {
-    const result = await this.locker.redisClient.EVAL('if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end', {
-      keys: [
-        this.locker.redis_key
-      ],
-      arguments: [
-        this.token
-      ]
-    });
-    if (result === 0) {
-      throw new RedisLockerReleaseError();
-    }
-  }
-};
-
-// dist/esm/locker/multi.js
-var import_node_crypto2 = require("node:crypto");
+//#endregion
+//#region src/locker/multi.ts
 var RedisMultiLocker = class {
-  redisClient;
-  redis_key;
-  ttl;
-  retry_interval;
-  retry_count;
-  /**
-   * @param redisClient - Redis client (from `@kirick/redis-client` package)
-   * @param namespace - Namespace to create keys in.
-   * @param options -
-   * @param options.ttl - Default time to live in milliseconds.
-   * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-   * @param options.retry_count - Maximum number of lock aquisition attempts.
-   */
-  constructor(redisClient, namespace, options) {
-    this.redisClient = redisClient;
-    this.redis_key = REDIS_PREFIX + namespace;
-    this.ttl = options?.ttl ?? 5e3;
-    this.retry_interval = options?.retry_interval ?? 100;
-    this.retry_count = options?.retry_count ?? 10;
-  }
-  /**
-   * @param ids - IDs to lock in the namespace.
-   * @param ttl Time to live in milliseconds.
-   * @returns Lock object.
-   */
-  async lock(ids, ttl = this.ttl) {
-    const token = (0, import_node_crypto2.randomBytes)(32).toString("base64").replaceAll("/", "").replaceAll("+", "").slice(0, 16);
-    const redis_script_keys = [
-      this.redis_key,
-      `${this.redis_key}:${token}`
-    ];
-    const redis_script_arguments = [
-      String(Date.now()),
-      String(ttl)
-    ];
-    if (Array.isArray(ids)) {
-      redis_script_arguments.push(...ids.map(String));
-    } else {
-      redis_script_arguments.push(...[...ids].map(String));
-    }
-    for (let try_id = 0; try_id < this.retry_count; try_id++) {
-      const result = await this.redisClient.EVAL(`
+	#ttl;
+	#retry_interval;
+	#retry_count;
+	/** @internal */
+	_redisClient;
+	/** @internal */
+	_redis_key;
+	/**
+	* @param redisClient - Redis client (from `@kirick/redis-client` package)
+	* @param namespace - Namespace to create keys in.
+	* @param options -
+	* @param options.ttl - Default time to live in milliseconds.
+	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
+	* @param options.retry_count - Maximum number of lock aquisition attempts.
+	*/
+	constructor(redisClient, namespace, options) {
+		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) ?? 5e3;
+		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
+		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
+		this._redisClient = redisClient;
+		this._redis_key = REDIS_PREFIX + namespace;
+	}
+	/**
+	* @param ids - IDs to lock in the namespace.
+	* @param ttl Time to live in milliseconds.
+	* @returns Lock object.
+	*/
+	async lock(ids, ttl = this.#ttl) {
+		const token = (0, node_crypto.randomBytes)(32).toString("base64").replaceAll(/[/+]/gu, "").slice(0, 16);
+		const redis_script_keys = [this._redis_key, `${this._redis_key}:${token}`];
+		const redis_script_arguments = [String(Date.now()), String(ttl)];
+		if (Array.isArray(ids)) redis_script_arguments.push(...ids.map(String));
+		else redis_script_arguments.push(...[...ids].map(String));
+		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
+			if (await this._redisClient.EVAL(`
 					local ts_ms_now = tonumber(ARGV[1])
 
 					redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
@@ -214,35 +88,32 @@ var RedisMultiLocker = class {
 
 					return 1
 				`, {
-        keys: redis_script_keys,
-        arguments: redis_script_arguments
-      });
-      if (result === 1) {
-        return new RedisMultiLock(this, token);
-      }
-      await asyncTimeout(this.retry_interval);
-    }
-    throw new RedisLockerAcquireError();
-  }
+				keys: redis_script_keys,
+				arguments: redis_script_arguments
+			}) === 1) return new RedisMultiLock(this, token);
+			await asyncTimeout(this.#retry_interval);
+		}
+		throw new RedisLockerAcquireError();
+	}
 };
 var RedisMultiLock = class {
-  locker;
-  token;
-  /**
-   * @param locker RedisLocker instance.
-   * @param token Lock token.
-   */
-  constructor(locker, token) {
-    this.locker = locker;
-    this.token = token;
-  }
-  /**
-   * Extends lock time.
-   * @param time - Time to extend in milliseconds.
-   * @returns -
-   */
-  async extend(time) {
-    const result = await this.locker.redisClient.EVAL(`
+	#locker;
+	#token;
+	/**
+	* @param locker RedisLocker instance.
+	* @param token Lock token.
+	*/
+	constructor(locker, token) {
+		this.#locker = locker;
+		this.#token = token;
+	}
+	/**
+	* Extends lock time.
+	* @param time - Time to extend in milliseconds.
+	* @returns -
+	*/
+	async extend(time) {
+		if (await this.#locker._redisClient.EVAL(`
 				local time_ms = tonumber(ARGV[1])
 				local ts_ms_expire_old = redis.call('PEXPIRETIME', KEYS[2])
 				if ts_ms_expire_old < 0 then
@@ -257,24 +128,16 @@ var RedisMultiLock = class {
 
 				return 1
 			`, {
-      keys: [
-        this.locker.redis_key,
-        `${this.locker.redis_key}:${this.token}`
-      ],
-      arguments: [
-        String(time)
-      ]
-    });
-    if (result === 0) {
-      throw new RedisLockerAcquireError();
-    }
-  }
-  /**
-   * Releases lock.
-   * @returns -
-   */
-  async release() {
-    const result = await this.locker.redisClient.EVAL(`
+			keys: [this.#locker._redis_key, `${this.#locker._redis_key}:${this.#token}`],
+			arguments: [String(time)]
+		}) === 0) throw new RedisLockerAcquireError();
+	}
+	/**
+	* Releases lock.
+	* @returns -
+	*/
+	async release() {
+		if (await this.#locker._redisClient.EVAL(`
 				if redis.call('EXISTS', KEYS[2]) == 0 then
 					return 0
 				end
@@ -284,23 +147,88 @@ var RedisMultiLock = class {
 				redis.call('ZREM', KEYS[1], unpack(ids))
 
 				return 1
-			`, {
-      keys: [
-        this.locker.redis_key,
-        `${this.locker.redis_key}:${this.token}`
-      ]
-    });
-    if (result === 0) {
-      throw new RedisLockerReleaseError();
-    }
-  }
+			`, { keys: [this.#locker._redis_key, `${this.#locker._redis_key}:${this.#token}`] }) === 0) throw new RedisLockerReleaseError();
+	}
 };
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  RedisLock,
-  RedisLocker,
-  RedisLockerAcquireError,
-  RedisLockerReleaseError,
-  RedisMultiLock,
-  RedisMultiLocker
-});
+//#endregion
+//#region src/locker/single.ts
+var RedisLocker = class {
+	#ttl;
+	#retry_interval;
+	#retry_count;
+	/** @internal */
+	_redisClient;
+	/** @internal */
+	_redis_key;
+	/**
+	* @param redisClient Redis client from `redis` package.
+	* @param key Key to lock.
+	* @param options -
+	* @param options.ttl - Default time to live in milliseconds.
+	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
+	* @param options.retry_count - Maximum number of lock aquisition attempts.
+	*/
+	constructor(redisClient, key, options) {
+		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) ?? 5e3;
+		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
+		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
+		this._redisClient = redisClient;
+		this._redis_key = REDIS_PREFIX + key;
+	}
+	/**
+	* Tries to aquire a lock. If not successful, throws an error.
+	* @param ttl - Time to live in milliseconds.
+	* @returns Lock object.
+	*/
+	async lock(ttl = this.#ttl) {
+		const token = (0, node_crypto.randomBytes)(16).toString("base64");
+		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
+			if (await this._redisClient.SET(this._redis_key, token, {
+				NX: true,
+				PX: ttl
+			}) === "OK") return new RedisLock(this, token);
+			await asyncTimeout(this.#retry_interval);
+		}
+		throw new RedisLockerAcquireError();
+	}
+};
+var RedisLock = class {
+	#locker;
+	#token;
+	/**
+	* @param locker RedisLocker instance.
+	* @param token Lock token.
+	*/
+	constructor(locker, token) {
+		this.#locker = locker;
+		this.#token = token;
+	}
+	/**
+	* Extends lock time.
+	* @param time Time to extend in milliseconds.
+	* @returns -
+	*/
+	async extend(time) {
+		if (await this.#locker._redisClient.EVAL("local pttl = redis.call(\"PTTL\", KEYS[1]) if pttl > 0 and redis.call(\"GET\", KEYS[1]) == ARGV[1] then return redis.call(\"PEXPIRE\", KEYS[1], pttl + tonumber(ARGV[2])) else return 0 end", {
+			keys: [this.#locker._redis_key],
+			arguments: [this.#token, String(time)]
+		}) === 0) throw new RedisLockerAcquireError();
+	}
+	/**
+	* Releases lock.
+	* @returns -
+	*/
+	async release() {
+		if (await this.#locker._redisClient.EVAL("if redis.call(\"GET\", KEYS[1]) == ARGV[1] then return redis.call(\"DEL\", KEYS[1]) else return 0 end", {
+			keys: [this.#locker._redis_key],
+			arguments: [this.#token]
+		}) === 0) throw new RedisLockerReleaseError();
+	}
+};
+//#endregion
+exports.RedisLock = RedisLock;
+exports.RedisLocker = RedisLocker;
+exports.RedisLockerAcquireError = RedisLockerAcquireError;
+exports.RedisLockerReleaseError = RedisLockerReleaseError;
+exports.RedisMultiLock = RedisMultiLock;
+exports.RedisMultiLocker = RedisMultiLocker;

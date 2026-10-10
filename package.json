@@ -1,16 +1,18 @@
 {
 	"name": "@redis-x/locker",
-	"version": "0.1.0-beta.1",
+	"version": "0.2.0-dev",
 	"description": "",
 	"publishConfig": {
 		"access": "public"
 	},
 	"type": "module",
-	"main": "dist/esm/main.js",
-	"types": "dist/esm/main.d.ts",
 	"exports": {
 		".": {
-			"import": "./dist/esm/main.js",
+			"types": {
+				"import": "./dist/main.d.mts",
+				"require": "./dist/main.d.cts"
+			},
+			"import": "./dist/main.mjs",
 			"require": "./dist/main.cjs"
 		}
 	},
@@ -21,22 +23,22 @@
 		"redis": "^4.6"
 	},
 	"devDependencies": {
-		"@kirick/eslint-config": "latest",
-		"@types/bun": "^1.1.6",
+		"@biomejs/biome": "2.5.4",
+		"@kirick/lint": "0.4.1",
 		"@types/node": "^22.14.1",
-		"eslint": "9.10.0",
-		"typescript": "5.8.3",
-		"vitest": "3.1.1"
+		"eslint": "10.7.0",
+		"oxlint": "1.74.0",
+		"publint": "0.3.25",
+		"tsdown": "0.23.0",
+		"typescript": "6.0.3",
+		"unplugin-unused": "0.6.0",
+		"vitest": "5.0.3"
 	},
 	"scripts": {
-		"build": "bun run build:ts && bun run build:cjs",
-		"build:cjs": "bunx esbuild --bundle --platform=node --format=cjs --packages=external --outfile=dist/main.cjs dist/esm/main.js",
-		"build:ts": "rm -r dist/esm dist/types ; tsc",
-		"check": "bun run build && bun run lint && bun run test",
-		"lint": "eslint . && tsc --skipLibCheck --noemit",
+		"build": "tsdown src/main.ts --format esm --format cjs --dts --publint --unused",
+		"check": "lint && bun run test && bun run build",
 		"redis:up": "docker ps | grep test-redis >/dev/null || docker run --rm -d -p 16379:6379 --name test-redis redis:7-alpine",
-		"redis:down": "docker stop test-redis",
-		"test": "export REDIS_PORT=16379 ; bun run redis:up && npm run test:vitest && bun test --coverage",
+		"test": "bun run build && bun run redis:up && bun test && npm run test:vitest",
 		"test:vitest": "vitest run --no-file-parallelism"
 	},
 	"repository": {

@@ -7,5 +7,4 @@ export const redisClient = createClient({
 });
 
 await redisClient.connect();
-
 await redisClient.FLUSHDB();
