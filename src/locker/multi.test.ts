@@ -82,3 +82,46 @@ test('lock extend', async () => {
 	const promise_lock_4 = locker.lock([1, 2]);
 	await expect(promise_lock_4).resolves.toBeInstanceOf(RedisMultiLock);
 });
+
+test.each(['array', 'set'])(
+	'locks, extends, and releases a 100-ID %s batch',
+	async (kind) => {
+		const batch_locker = new RedisMultiLocker(redisClient, `batch-${kind}`, {
+			retry_count: 1,
+		});
+		const ids = Array.from({ length: 100 }, (_, index) => index);
+		const lock = await batch_locker.lock(kind === 'array' ? ids : new Set(ids));
+
+		try {
+			await lock.extend(1000);
+			await expect(batch_locker.lock([99, 100])).rejects.toThrow(
+				RedisLockerAcquireError,
+			);
+			const disjoint = await batch_locker.lock([100]);
+			await disjoint.release();
+		} finally {
+			await lock.release();
+		}
+
+		const next = await batch_locker.lock(ids);
+		await next.release();
+	},
+);
+
+test('accepts a 100-element array containing duplicate IDs', async () => {
+	const batch_locker = new RedisMultiLocker(redisClient, 'batch-duplicates', {
+		retry_count: 1,
+	});
+	const lock = await batch_locker.lock(Array.from({ length: 100 }, () => 'id'));
+	try {
+		await lock.extend(1000);
+		await expect(batch_locker.lock(['id'])).rejects.toThrow(
+			RedisLockerAcquireError,
+		);
+	} finally {
+		await lock.release();
+	}
+
+	const next = await batch_locker.lock(['id']);
+	await next.release();
+});

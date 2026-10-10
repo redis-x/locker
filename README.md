@@ -69,6 +69,8 @@ try {
 
 For operations that require multiple resources to be locked simultaneously (like transferring money between accounts). If any resource is already locked, the entire operation fails.
 
+Each `lock(ids)` call accepts an array or `Set` containing **1–100 elements**. Duplicate array elements count toward the limit. Empty collections and collections with more than 100 elements are rejected with a `RangeError` before any Redis command is sent.
+
 ```typescript
 import { RedisMultiLocker } from '@redis-x/locker';
 

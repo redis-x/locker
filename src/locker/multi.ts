@@ -1,6 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { RedisLockerAcquireError, RedisLockerReleaseError } from '../error.js';
-import { asyncTimeout, REDIS_PREFIX, type RedisClient } from '../utils.js';
+import {
+	asyncTimeout,
+	REDIS_PREFIX,
+	type RedisClient,
+	validateDuration,
+} from '../utils.js';
 
 export class RedisMultiLocker {
 	#ttl: number;
@@ -14,12 +19,13 @@ export class RedisMultiLocker {
 	_redis_key: string;
 
 	/**
-	 * @param redisClient - Redis client (from `@kirick/redis-client` package)
+	 * @param redisClient - Redis client from the `redis` package.
 	 * @param namespace - Namespace to create keys in.
 	 * @param options -
-	 * @param options.ttl - Default time to live in milliseconds.
+	 * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
 	 * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
 	 * @param options.retry_count - Maximum number of lock aquisition attempts.
+	 * @throws {RangeError} If the default TTL is not a positive safe integer.
 	 */
 	constructor(
 		redisClient: RedisClient,
@@ -30,7 +36,8 @@ export class RedisMultiLocker {
 			retry_count?: number;
 		},
 	) {
-		this.#ttl = options?.ttl ?? 5000;
+		this.#ttl = options?.ttl === undefined ? 5000 : options.ttl;
+		validateDuration(this.#ttl);
 		this.#retry_interval = options?.retry_interval ?? 100;
 		this.#retry_count = options?.retry_count ?? 10;
 
@@ -39,14 +46,24 @@ export class RedisMultiLocker {
 	}
 
 	/**
-	 * @param ids - IDs to lock in the namespace.
-	 * @param ttl Time to live in milliseconds.
+	 * @param ids - IDs to lock in the namespace; an array or Set with 1–100 elements.
+	 * Duplicate array elements count toward the limit.
+	 * @param ttl Time to live in milliseconds; a positive safe integer.
 	 * @returns Lock object.
+	 * @throws {RangeError} If the ID count is outside 1–100 or the TTL is not a positive safe integer.
 	 */
 	async lock(
 		ids: (string | number)[] | Set<string | number>,
 		ttl: number = this.#ttl,
 	): Promise<RedisMultiLock> {
+		validateDuration(ttl);
+		const id_count = Array.isArray(ids) ? ids.length : ids.size;
+		if (id_count < 1 || id_count > 100) {
+			throw new RangeError(
+				'Multi-lock requests must contain between 1 and 100 IDs',
+			);
+		}
+
 		const token = randomBytes(32)
 			.toString('base64')
 			.replaceAll(/[/+]/gu, '')
@@ -101,8 +118,10 @@ export class RedisMultiLocker {
 				return new RedisMultiLock(this, token);
 			}
 
-			// oxlint-disable-next-line no-await-in-loop
-			await asyncTimeout(this.#retry_interval);
+			if (try_id + 1 < this.#retry_count) {
+				// oxlint-disable-next-line no-await-in-loop
+				await asyncTimeout(this.#retry_interval);
+			}
 		}
 
 		throw new RedisLockerAcquireError();
@@ -124,10 +143,12 @@ export class RedisMultiLock {
 
 	/**
 	 * Extends lock time.
-	 * @param time - Time to extend in milliseconds.
+	 * @param time - Time to extend in milliseconds; a positive safe integer.
 	 * @returns -
+	 * @throws {RangeError} If the extension duration is not a positive safe integer.
 	 */
 	async extend(time: number): Promise<void> {
+		validateDuration(time);
 		const result = await this.#locker._redisClient.EVAL(
 			`
 				local time_ms = tonumber(ARGV[1])

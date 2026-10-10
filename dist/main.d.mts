@@ -14,12 +14,13 @@ type RedisClient = RedisClientType<RedisModules, RedisFunctions, RedisScripts>;
 export declare class RedisMultiLocker {
   #private;
   /**
-   * @param redisClient - Redis client (from `@kirick/redis-client` package)
+   * @param redisClient - Redis client from the `redis` package.
    * @param namespace - Namespace to create keys in.
    * @param options -
-   * @param options.ttl - Default time to live in milliseconds.
+   * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
    * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
    * @param options.retry_count - Maximum number of lock aquisition attempts.
+   * @throws {RangeError} If the default TTL is not a positive safe integer.
    */
   constructor(redisClient: RedisClient, namespace: string, options?: {
     ttl?: number;
@@ -27,9 +28,11 @@ export declare class RedisMultiLocker {
     retry_count?: number;
   });
   /**
-   * @param ids - IDs to lock in the namespace.
-   * @param ttl Time to live in milliseconds.
+   * @param ids - IDs to lock in the namespace; an array or Set with 1–100 elements.
+   * Duplicate array elements count toward the limit.
+   * @param ttl Time to live in milliseconds; a positive safe integer.
    * @returns Lock object.
+   * @throws {RangeError} If the ID count is outside 1–100 or the TTL is not a positive safe integer.
    */
   lock(ids: (string | number)[] | Set<string | number>, ttl?: number): Promise<RedisMultiLock>;
 }
@@ -42,8 +45,9 @@ export declare class RedisMultiLock {
   constructor(locker: RedisMultiLocker, token: string);
   /**
    * Extends lock time.
-   * @param time - Time to extend in milliseconds.
+   * @param time - Time to extend in milliseconds; a positive safe integer.
    * @returns -
+   * @throws {RangeError} If the extension duration is not a positive safe integer.
    */
   extend(time: number): Promise<void>;
   /**
@@ -60,9 +64,10 @@ export declare class RedisLocker {
    * @param redisClient Redis client from `redis` package.
    * @param key Key to lock.
    * @param options -
-   * @param options.ttl - Default time to live in milliseconds.
+   * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
    * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
    * @param options.retry_count - Maximum number of lock aquisition attempts.
+   * @throws {RangeError} If the default TTL is not a positive safe integer.
    */
   constructor(redisClient: RedisClient, key: string, options?: {
     ttl?: number;
@@ -71,8 +76,9 @@ export declare class RedisLocker {
   });
   /**
    * Tries to aquire a lock. If not successful, throws an error.
-   * @param ttl - Time to live in milliseconds.
+   * @param ttl - Time to live in milliseconds; a positive safe integer.
    * @returns Lock object.
+   * @throws {RangeError} If the TTL is not a positive safe integer.
    */
   lock(ttl?: number): Promise<RedisLock>;
 }
@@ -85,8 +91,9 @@ export declare class RedisLock {
   constructor(locker: RedisLocker, token: string);
   /**
    * Extends lock time.
-   * @param time Time to extend in milliseconds.
+   * @param time Time to extend in milliseconds; a positive safe integer.
    * @returns -
+   * @throws {RangeError} If the extension duration is not a positive safe integer.
    */
   extend(time: number): Promise<void>;
   /**

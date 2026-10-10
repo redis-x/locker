@@ -14,6 +14,14 @@ var RedisLockerReleaseError = class extends Error {
 //#region src/utils.ts
 const REDIS_PREFIX = "@x:locker:";
 /**
+* Validates a TTL or extension duration before sending it to Redis.
+* @param duration Time in milliseconds.
+* @throws {RangeError} If the duration is not a positive safe integer.
+*/
+function validateDuration(duration) {
+	if (!Number.isSafeInteger(duration) || duration <= 0) throw new RangeError("Duration must be a positive safe integer in milliseconds");
+}
+/**
 * Resolves after a given time.
 * @param ms Time in milliseconds.
 * @returns -
@@ -34,26 +42,33 @@ var RedisMultiLocker = class {
 	/** @internal */
 	_redis_key;
 	/**
-	* @param redisClient - Redis client (from `@kirick/redis-client` package)
+	* @param redisClient - Redis client from the `redis` package.
 	* @param namespace - Namespace to create keys in.
 	* @param options -
-	* @param options.ttl - Default time to live in milliseconds.
+	* @param options.ttl - Default time to live in milliseconds; a positive safe integer.
 	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
 	* @param options.retry_count - Maximum number of lock aquisition attempts.
+	* @throws {RangeError} If the default TTL is not a positive safe integer.
 	*/
 	constructor(redisClient, namespace, options) {
-		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) ?? 5e3;
+		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) === void 0 ? 5e3 : options.ttl;
+		validateDuration(this.#ttl);
 		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
 		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
 		this._redisClient = redisClient;
 		this._redis_key = REDIS_PREFIX + namespace;
 	}
 	/**
-	* @param ids - IDs to lock in the namespace.
-	* @param ttl Time to live in milliseconds.
+	* @param ids - IDs to lock in the namespace; an array or Set with 1–100 elements.
+	* Duplicate array elements count toward the limit.
+	* @param ttl Time to live in milliseconds; a positive safe integer.
 	* @returns Lock object.
+	* @throws {RangeError} If the ID count is outside 1–100 or the TTL is not a positive safe integer.
 	*/
 	async lock(ids, ttl = this.#ttl) {
+		validateDuration(ttl);
+		const id_count = Array.isArray(ids) ? ids.length : ids.size;
+		if (id_count < 1 || id_count > 100) throw new RangeError("Multi-lock requests must contain between 1 and 100 IDs");
 		const token = randomBytes(32).toString("base64").replaceAll(/[/+]/gu, "").slice(0, 16);
 		const redis_script_keys = [this._redis_key, `${this._redis_key}:${token}`];
 		const redis_script_arguments = [String(Date.now()), String(ttl)];
@@ -90,7 +105,7 @@ var RedisMultiLocker = class {
 				keys: redis_script_keys,
 				arguments: redis_script_arguments
 			}) === 1) return new RedisMultiLock(this, token);
-			await asyncTimeout(this.#retry_interval);
+			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
 		throw new RedisLockerAcquireError();
 	}
@@ -108,10 +123,12 @@ var RedisMultiLock = class {
 	}
 	/**
 	* Extends lock time.
-	* @param time - Time to extend in milliseconds.
+	* @param time - Time to extend in milliseconds; a positive safe integer.
 	* @returns -
+	* @throws {RangeError} If the extension duration is not a positive safe integer.
 	*/
 	async extend(time) {
+		validateDuration(time);
 		if (await this.#locker._redisClient.EVAL(`
 				local time_ms = tonumber(ARGV[1])
 				local ts_ms_expire_old = redis.call('PEXPIRETIME', KEYS[2])
@@ -163,12 +180,14 @@ var RedisLocker = class {
 	* @param redisClient Redis client from `redis` package.
 	* @param key Key to lock.
 	* @param options -
-	* @param options.ttl - Default time to live in milliseconds.
+	* @param options.ttl - Default time to live in milliseconds; a positive safe integer.
 	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
 	* @param options.retry_count - Maximum number of lock aquisition attempts.
+	* @throws {RangeError} If the default TTL is not a positive safe integer.
 	*/
 	constructor(redisClient, key, options) {
-		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) ?? 5e3;
+		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) === void 0 ? 5e3 : options.ttl;
+		validateDuration(this.#ttl);
 		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
 		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
 		this._redisClient = redisClient;
@@ -176,17 +195,19 @@ var RedisLocker = class {
 	}
 	/**
 	* Tries to aquire a lock. If not successful, throws an error.
-	* @param ttl - Time to live in milliseconds.
+	* @param ttl - Time to live in milliseconds; a positive safe integer.
 	* @returns Lock object.
+	* @throws {RangeError} If the TTL is not a positive safe integer.
 	*/
 	async lock(ttl = this.#ttl) {
+		validateDuration(ttl);
 		const token = randomBytes(16).toString("base64");
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
 			if (await this._redisClient.SET(this._redis_key, token, {
 				NX: true,
 				PX: ttl
 			}) === "OK") return new RedisLock(this, token);
-			await asyncTimeout(this.#retry_interval);
+			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
 		throw new RedisLockerAcquireError();
 	}
@@ -204,10 +225,12 @@ var RedisLock = class {
 	}
 	/**
 	* Extends lock time.
-	* @param time Time to extend in milliseconds.
+	* @param time Time to extend in milliseconds; a positive safe integer.
 	* @returns -
+	* @throws {RangeError} If the extension duration is not a positive safe integer.
 	*/
 	async extend(time) {
+		validateDuration(time);
 		if (await this.#locker._redisClient.EVAL("local pttl = redis.call(\"PTTL\", KEYS[1]) if pttl > 0 and redis.call(\"GET\", KEYS[1]) == ARGV[1] then return redis.call(\"PEXPIRE\", KEYS[1], pttl + tonumber(ARGV[2])) else return 0 end", {
 			keys: [this.#locker._redis_key],
 			arguments: [this.#token, String(time)]

@@ -13,6 +13,19 @@ export type RedisClient = RedisClientType<
 >;
 
 /**
+ * Validates a TTL or extension duration before sending it to Redis.
+ * @param duration Time in milliseconds.
+ * @throws {RangeError} If the duration is not a positive safe integer.
+ */
+export function validateDuration(duration: number): void {
+	if (!Number.isSafeInteger(duration) || duration <= 0) {
+		throw new RangeError(
+			'Duration must be a positive safe integer in milliseconds',
+		);
+	}
+}
+
+/**
  * Resolves after a given time.
  * @param ms Time in milliseconds.
  * @returns -
