@@ -24,7 +24,7 @@ pnpm add @redis-x/locker
 npm install @redis-x/locker
 ```
 
-**Note**: This package requires `redis@^4.6` as a peer dependency.
+**Requirements**: Node.js 16.0.0 or newer, Redis server **7.4 or newer**, and `redis@^4.6` as a JavaScript peer dependency.
 
 ## Basic Usage
 

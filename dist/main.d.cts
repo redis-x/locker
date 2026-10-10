@@ -14,6 +14,7 @@ type RedisClient = RedisClientType<RedisModules, RedisFunctions, RedisScripts>;
 export declare class RedisMultiLocker {
   #private;
   /**
+   * Creates a multi-resource locker. Requires Redis server 7.4 or newer.
    * @param redisClient - Redis client from the `redis` package.
    * @param namespace - Namespace to create keys in.
    * @param options -
@@ -39,10 +40,11 @@ export declare class RedisMultiLocker {
 export declare class RedisMultiLock {
   #private;
   /**
-   * @param locker RedisLocker instance.
+   * @param locker RedisMultiLocker instance.
    * @param token Lock token.
+   * @param ids Normalized resource IDs acquired with this token.
    */
-  constructor(locker: RedisMultiLocker, token: string);
+  constructor(locker: RedisMultiLocker, token: string, ids: readonly string[]);
   /**
    * Extends lock time.
    * @param time - Time to extend in milliseconds; a positive safe integer.

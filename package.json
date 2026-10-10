@@ -37,7 +37,7 @@
 	"scripts": {
 		"build": "tsdown src/main.ts --format esm --format cjs --dts --publint --unused",
 		"check": "lint && bun run test && bun run build",
-		"redis:up": "docker ps | grep test-redis >/dev/null || docker run --rm -d -p 16379:6379 --name test-redis redis:7-alpine",
+		"redis:up": "docker ps | grep test-redis >/dev/null || docker run --rm -d -p 16379:6379 --name test-redis redis:7.4-alpine",
 		"test": "bun run build && bun run redis:up && bun test && npm run test:vitest",
 		"test:vitest": "vitest run --no-file-parallelism"
 	},

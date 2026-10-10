@@ -43,6 +43,7 @@ var RedisMultiLocker = class {
 	/** @internal */
 	_redis_key;
 	/**
+	* Creates a multi-resource locker. Requires Redis server 7.4 or newer.
 	* @param redisClient - Redis client from the `redis` package.
 	* @param namespace - Namespace to create keys in.
 	* @param options -
@@ -71,41 +72,42 @@ var RedisMultiLocker = class {
 		const id_count = Array.isArray(ids) ? ids.length : ids.size;
 		if (id_count < 1 || id_count > 100) throw new RangeError("Multi-lock requests must contain between 1 and 100 IDs");
 		const token = (0, node_crypto.randomBytes)(32).toString("base64").replaceAll(/[/+]/gu, "").slice(0, 16);
-		const redis_script_keys = [this._redis_key, `${this._redis_key}:${token}`];
-		const redis_script_arguments = [String(Date.now()), String(ttl)];
-		if (Array.isArray(ids)) redis_script_arguments.push(...ids.map(String));
-		else redis_script_arguments.push(...[...ids].map(String));
+		const lock_ids = [...new Set(Array.from(ids, String))];
+		const redis_script_arguments = [
+			token,
+			String(ttl),
+			...lock_ids
+		];
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
 			if (await this._redisClient.EVAL(`
-					local ts_ms_now = tonumber(ARGV[1])
-
-					redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
-
-					local ttl_ms = ARGV[2]
 					local ids = { unpack(ARGV, 3) }
-
-					local args_zadd = {}
-					for _, id in ipairs(ids) do
-						if redis.call('ZSCORE', KEYS[1], id) ~= false then
+					-- Read before writing so Redis versions without field TTLs fail safely.
+					local ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))
+					for _, ttl in ipairs(ttls) do
+						if ttl ~= -2 then
 							return 0
 						end
-
-						table.insert(args_zadd, ts_ms_now + ttl_ms)
-						table.insert(args_zadd, id)
 					end
 
-					-- set its to general table
-					redis.call('ZADD', KEYS[1], unpack(args_zadd))
+					local fields = {}
+					for _, id in ipairs(ids) do
+						table.insert(fields, id)
+						table.insert(fields, ARGV[1])
+					end
+					redis.call('HSET', KEYS[1], unpack(fields))
 
-					-- set ids to lock token
-					redis.call('SADD', KEYS[2], unpack(ids))
-					redis.call('PEXPIRE', KEYS[2], ttl_ms)
+					local result = redis.pcall('HPEXPIRE', KEYS[1], ARGV[2], 'FIELDS', #ids, unpack(ids))
+					if result.err then
+						-- Lua errors do not roll back writes. Remove only our new fields.
+						redis.call('HDEL', KEYS[1], unpack(ids))
+						return result
+					end
 
 					return 1
 				`, {
-				keys: redis_script_keys,
+				keys: [this._redis_key],
 				arguments: redis_script_arguments
-			}) === 1) return new RedisMultiLock(this, token);
+			}) === 1) return new RedisMultiLock(this, token, lock_ids);
 			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
 		throw new RedisLockerAcquireError();
@@ -114,13 +116,16 @@ var RedisMultiLocker = class {
 var RedisMultiLock = class {
 	#locker;
 	#token;
+	#ids;
 	/**
-	* @param locker RedisLocker instance.
+	* @param locker RedisMultiLocker instance.
 	* @param token Lock token.
+	* @param ids Normalized resource IDs acquired with this token.
 	*/
-	constructor(locker, token) {
+	constructor(locker, token, ids) {
 		this.#locker = locker;
 		this.#token = token;
+		this.#ids = [...ids];
 	}
 	/**
 	* Extends lock time.
@@ -131,22 +136,32 @@ var RedisMultiLock = class {
 	async extend(time) {
 		validateDuration(time);
 		if (await this.#locker._redisClient.EVAL(`
-				local time_ms = tonumber(ARGV[1])
-				local ts_ms_expire_old = redis.call('PEXPIRETIME', KEYS[2])
-				if ts_ms_expire_old < 0 then
-					return 0
+				local ids = { unpack(ARGV, 3) }
+				local tokens = redis.call('HMGET', KEYS[1], unpack(ids))
+				for _, token in ipairs(tokens) do
+					if token ~= ARGV[1] then
+						return 0
+					end
 				end
-				redis.call('PEXPIREAT', KEYS[2], ts_ms_expire_old + time_ms)
 
-				local ids = redis.call('SMEMBERS', KEYS[2])
-				for _, id in ipairs(ids) do
-					redis.call('ZINCRBY', KEYS[1], time_ms, id)
+				local ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))
+				local remaining_ms = math.huge
+				for _, ttl in ipairs(ttls) do
+					if ttl <= 0 then
+						return 0
+					end
+					remaining_ms = math.min(remaining_ms, ttl)
 				end
+				redis.call('HPEXPIRE', KEYS[1], remaining_ms + tonumber(ARGV[2]), 'FIELDS', #ids, unpack(ids))
 
 				return 1
 			`, {
-			keys: [this.#locker._redis_key, `${this.#locker._redis_key}:${this.#token}`],
-			arguments: [String(time)]
+			keys: [this.#locker._redis_key],
+			arguments: [
+				this.#token,
+				String(time),
+				...this.#ids
+			]
 		}) === 0) throw new RedisLockerAcquireError();
 	}
 	/**
@@ -155,16 +170,21 @@ var RedisMultiLock = class {
 	*/
 	async release() {
 		if (await this.#locker._redisClient.EVAL(`
-				if redis.call('EXISTS', KEYS[2]) == 0 then
-					return 0
+				local ids = { unpack(ARGV, 2) }
+				local tokens = redis.call('HMGET', KEYS[1], unpack(ids))
+				for _, token in ipairs(tokens) do
+					if token ~= ARGV[1] then
+						return 0
+					end
 				end
 
-				local ids = redis.call('SMEMBERS', KEYS[2])
-				redis.call('DEL', KEYS[2])
-				redis.call('ZREM', KEYS[1], unpack(ids))
+				redis.call('HDEL', KEYS[1], unpack(ids))
 
 				return 1
-			`, { keys: [this.#locker._redis_key, `${this.#locker._redis_key}:${this.#token}`] }) === 0) throw new RedisLockerReleaseError();
+			`, {
+			keys: [this.#locker._redis_key],
+			arguments: [this.#token, ...this.#ids]
+		}) === 0) throw new RedisLockerReleaseError();
 	}
 };
 //#endregion
