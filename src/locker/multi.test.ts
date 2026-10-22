@@ -273,9 +273,9 @@ test.each(['array', 'set'])(
 	},
 );
 
-test('accepts a 100-element array containing duplicate IDs', async () => {
+test('accepts an array of more than 100 duplicate IDs', async () => {
 	const batch_locker = createLocker('batch-duplicates');
-	const lock = await batch_locker.lock(Array.from({ length: 100 }, () => 'id'));
+	const lock = await batch_locker.lock(Array.from({ length: 150 }, () => 'id'));
 	await lock.extend(1000);
 	await expect(batch_locker.lock(['id'])).rejects.toThrow(
 		RedisLockerAcquireError,

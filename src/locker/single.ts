@@ -5,6 +5,7 @@ import {
 	REDIS_PREFIX,
 	type RedisClient,
 	validateDuration,
+	validateRetryOptions,
 } from '../utils.js';
 
 export class RedisLocker {
@@ -23,9 +24,9 @@ export class RedisLocker {
 	 * @param key Key to lock.
 	 * @param options -
 	 * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
-	 * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-	 * @param options.retry_count - Maximum number of lock aquisition attempts.
-	 * @throws {RangeError} If the default TTL is not a positive safe integer.
+	 * @param options.retry_interval - Interval between lock acquisition attempts in milliseconds; an integer from 0 to 2147483647.
+	 * @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
+	 * @throws {RangeError} If the default TTL or a retry option is invalid.
 	 */
 	constructor(
 		redisClient: RedisClient,
@@ -38,8 +39,11 @@ export class RedisLocker {
 	) {
 		this.#ttl = options?.ttl === undefined ? 5000 : options.ttl;
 		validateDuration(this.#ttl);
-		this.#retry_interval = options?.retry_interval ?? 100;
-		this.#retry_count = options?.retry_count ?? 10;
+		this.#retry_interval =
+			options?.retry_interval === undefined ? 100 : options.retry_interval;
+		this.#retry_count =
+			options?.retry_count === undefined ? 10 : options.retry_count;
+		validateRetryOptions(this.#retry_interval, this.#retry_count);
 
 		this._redisClient = redisClient;
 		this._redis_key = REDIS_PREFIX + key;

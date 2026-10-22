@@ -23,14 +23,16 @@ function acquire(
 		: locker.lock(['id'], ttl);
 }
 
+const LOCKERS = [
+	['single', RedisLocker],
+	['multi', RedisMultiLocker],
+] as const;
+
 afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe.each([
-	['single', RedisLocker],
-	['multi', RedisMultiLocker],
-] as const)('%s locker options', (_, Locker) => {
+describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 	test.each([
 		0,
 		-1,
@@ -121,6 +123,46 @@ describe.each([
 	});
 });
 
+describe.each(LOCKERS)('%s locker retry options', (_, Locker) => {
+	test.each([
+		{ retry_count: 0 },
+		{ retry_count: -1 },
+		{ retry_count: 1.5 },
+		// eslint-disable-next-line unicorn/prefer-global-number-constants -- Oxlint requires Number.NaN.
+		{ retry_count: Number.NaN },
+		{ retry_count: Infinity },
+		{ retry_count: Number.MAX_SAFE_INTEGER + 1 },
+		{ retry_count: null },
+		{ retry_count: '3' },
+		{ retry_interval: -1 },
+		{ retry_interval: 0.5 },
+		// eslint-disable-next-line unicorn/prefer-global-number-constants -- Oxlint requires Number.NaN.
+		{ retry_interval: Number.NaN },
+		{ retry_interval: Infinity },
+		{ retry_interval: 2_147_483_648 },
+		{ retry_interval: null },
+		{ retry_interval: '100' },
+	])('rejects invalid value %o', (options) => {
+		expect(
+			() =>
+				new Locker(
+					createClient(),
+					'validation',
+					options as { retry_count?: number; retry_interval?: number },
+				),
+		).toThrow(RangeError);
+	});
+
+	test.each([
+		{ retry_count: 1, retry_interval: 0 },
+		{ retry_count: Number.MAX_SAFE_INTEGER, retry_interval: 2_147_483_647 },
+	])('accepts boundary value %o', (options) => {
+		expect(
+			() => new Locker(createClient(), 'validation', options),
+		).not.toThrow();
+	});
+});
+
 describe('multi-lock batch limits', () => {
 	test.each([0, 101, 5000])(
 		'rejects arrays and Sets of %s IDs before Redis commands',
@@ -136,13 +178,21 @@ describe('multi-lock batch limits', () => {
 		},
 	);
 
-	test('counts duplicate array elements toward the limit', async () => {
+	test('counts unique IDs after converting them to strings', async () => {
 		const client = createClient();
-		const evaluate = vi.spyOn(client, 'EVAL');
+		const evaluate = vi.spyOn(client, 'EVAL').mockResolvedValue(1);
 		const locker = new RedisMultiLocker(client, 'batch');
+		const ids = Array.from({ length: 100 }, (_, index) => index);
 
+		await locker.lock([...ids, ...ids.map(String)]);
+		expect(evaluate).toHaveBeenCalledWith(expect.any(String), {
+			keys: [locker._redis_key],
+			arguments: [expect.any(String), '5000', ...ids.map(String)],
+		});
+
+		evaluate.mockClear();
 		await expect(
-			locker.lock(Array.from({ length: 101 }, () => 'id')),
+			locker.lock([...ids, ...ids.map(String), 100]),
 		).rejects.toThrow(RangeError);
 		expect(evaluate).not.toHaveBeenCalled();
 	});

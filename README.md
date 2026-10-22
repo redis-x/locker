@@ -17,14 +17,18 @@ A powerful and flexible distributed locking library for Redis with TypeScript su
 ## Installation
 
 ```bash
-bun i @redis-x/locker
+bun i @redis-x/locker redis
 # or with pnpm
-pnpm add @redis-x/locker
+pnpm add @redis-x/locker redis
 # or with npm
-npm install @redis-x/locker
+npm install @redis-x/locker redis
 ```
 
-**Requirements**: Node.js 16.0.0 or newer, Redis server **7.4 or newer**, and `redis@^4.6` as a JavaScript peer dependency.
+**Requirements**:
+
+- Node.js 16 or newer;
+- `redis@^4.6`;
+- Redis server **7.4 or newer** for `RedisMultiLocker`.
 
 ## Basic Usage
 
@@ -65,11 +69,23 @@ try {
 }
 ```
 
+### Options
+
+Both `RedisLocker` and `RedisMultiLocker` accept the same options:
+
+| Option           | Default | Description                                                     |
+| ---------------- | ------: | --------------------------------------------------------------- |
+| `ttl`            |  `5000` | Lock lifetime in milliseconds. Can be overridden in `lock()`.   |
+| `retry_interval` |   `100` | Milliseconds to wait between attempts, from 0 to 2147483647.    |
+| `retry_count`    |    `10` | Maximum number of attempts, including the first one.            |
+
+Invalid values throw a `RangeError`.
+
 ### Multi-Resource Locking
 
-For operations that require multiple resources to be locked simultaneously (like transferring money between accounts). If any resource is already locked, the entire operation fails.
+For operations that require multiple resources to be locked simultaneously (like transferring money between accounts). Either all IDs are locked or none: if any of them is already locked, the attempt fails and is retried.
 
-Each `lock(ids)` call accepts an array or `Set` containing **1–100 elements**. Duplicate array elements count toward the limit. Empty collections and collections with more than 100 elements are rejected with a `RangeError` before any Redis command is sent.
+`lock(ids)` accepts an array or `Set` of **1–100 unique IDs**. Numbers are converted to strings, so `1` and `'1'` are the same ID.
 
 ```typescript
 import { RedisMultiLocker } from '@redis-x/locker';
@@ -82,7 +98,7 @@ try {
   // Lock multiple accounts for a money transfer
   lock = await multiLocker.lock(['account:456', 'account:789']);
 
-  // Perform atomic operation across both resources
+  // Critical section - both accounts are locked
   await transferMoney(456, 789, 100);
 } catch (error) {
   console.error('Transfer failed:', error);
@@ -92,21 +108,23 @@ try {
 }
 ```
 
+Single-lock keys and multi-lock namespaces share the same Redis keys, so don't use one name for both.
+
 ### Custom TTL for Specific Operations
 
-You can specify custom TTL for each lock operation:
+You can override the default TTL for each lock operation:
 
 ```typescript
 // Quick operation with short lock
 const quickLock = await locker.lock(1000); // 1 second TTL
 
 // Long operation with extended lock
-const longLock = await locker.lock(30000); // 30 second TTL
+const longLock = await multiLocker.lock(['account:456'], 30000); // 30 second TTL
 ```
 
 ### Extending a Lock
 
-Sometimes your operation takes longer than expected. Instead of releasing and re-acquiring the lock, extend it:
+Sometimes your operation takes longer than expected. Instead of releasing and re-acquiring the lock, extend it. `extend()` adds time to what the lock has left:
 
 ```typescript
 let lock;
@@ -131,20 +149,19 @@ try {
 
 ### Handling Lock Errors
 
-The library provides specific error types for different failure scenarios:
+- `RedisLockerAcquireError` is thrown by `lock()` when every attempt failed because the resource is locked, and by `extend()` when the lock has expired or belongs to someone else.
+- `RedisLockerReleaseError` is thrown by `release()` when the lock has expired or belongs to someone else.
+- `RangeError` is thrown for an invalid TTL, retry option or number of IDs, before anything is sent to Redis.
 
 ```typescript
-import { RedisLockerAcquireError, RedisLockerReleaseError } from '@redis-x/locker';
+import { RedisLockerAcquireError } from '@redis-x/locker';
 
 try {
-  lock = await locker.lock();
+  const lock = await locker.lock();
+  // ...
 } catch (error) {
   if (error instanceof RedisLockerAcquireError) {
-    // Handle acquisition failure (resource is busy)
     console.log('Resource is currently locked by another process');
-  } else if (error instanceof RedisLockerReleaseError) {
-    // Handle release failure (lock expired or was stolen)
-    console.log('Could not release lock, it may have expired');
   }
 }
 ```

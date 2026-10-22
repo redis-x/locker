@@ -14,6 +14,7 @@ var RedisLockerReleaseError = class extends Error {
 //#endregion
 //#region src/utils.ts
 const REDIS_PREFIX = "@x:locker:";
+const MAX_TIMEOUT = 2147483647;
 /**
 * Validates a TTL or extension duration before sending it to Redis.
 * @param duration Time in milliseconds.
@@ -21,6 +22,16 @@ const REDIS_PREFIX = "@x:locker:";
 */
 function validateDuration(duration) {
 	if (!Number.isSafeInteger(duration) || duration <= 0) throw new RangeError("Duration must be a positive safe integer in milliseconds");
+}
+/**
+* Validates lock acquisition retry options.
+* @param retry_interval Interval between attempts in milliseconds.
+* @param retry_count Maximum number of attempts.
+* @throws {RangeError} If the interval is not an integer from 0 to 2147483647 or the count is not a positive safe integer.
+*/
+function validateRetryOptions(retry_interval, retry_count) {
+	if (!Number.isSafeInteger(retry_interval) || retry_interval < 0 || retry_interval > MAX_TIMEOUT) throw new RangeError(`Retry interval must be an integer from 0 to ${MAX_TIMEOUT} milliseconds`);
+	if (!Number.isSafeInteger(retry_count) || retry_count <= 0) throw new RangeError("Retry count must be a positive safe integer");
 }
 /**
 * Resolves after a given time.
@@ -48,31 +59,31 @@ var RedisMultiLocker = class {
 	* @param namespace - Namespace to create keys in.
 	* @param options -
 	* @param options.ttl - Default time to live in milliseconds; a positive safe integer.
-	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-	* @param options.retry_count - Maximum number of lock aquisition attempts.
-	* @throws {RangeError} If the default TTL is not a positive safe integer.
+	* @param options.retry_interval - Interval between lock acquisition attempts in milliseconds; an integer from 0 to 2147483647.
+	* @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
+	* @throws {RangeError} If the default TTL or a retry option is invalid.
 	*/
 	constructor(redisClient, namespace, options) {
 		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) === void 0 ? 5e3 : options.ttl;
 		validateDuration(this.#ttl);
-		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
-		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
+		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) === void 0 ? 100 : options.retry_interval;
+		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) === void 0 ? 10 : options.retry_count;
+		validateRetryOptions(this.#retry_interval, this.#retry_count);
 		this._redisClient = redisClient;
 		this._redis_key = REDIS_PREFIX + namespace;
 	}
 	/**
-	* @param ids - IDs to lock in the namespace; an array or Set with 1–100 elements.
-	* Duplicate array elements count toward the limit.
+	* @param ids - IDs to lock in the namespace; an array or Set with 1–100 unique IDs after conversion to strings.
 	* @param ttl Time to live in milliseconds; a positive safe integer.
 	* @returns Lock object.
-	* @throws {RangeError} If the ID count is outside 1–100 or the TTL is not a positive safe integer.
+	* @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
 	*/
 	async lock(ids, ttl = this.#ttl) {
 		validateDuration(ttl);
-		const id_count = Array.isArray(ids) ? ids.length : ids.size;
-		if (id_count < 1 || id_count > 100) throw new RangeError("Multi-lock requests must contain between 1 and 100 IDs");
-		const token = (0, node_crypto.randomBytes)(32).toString("base64").replaceAll(/[/+]/gu, "").slice(0, 16);
-		const lock_ids = [...new Set(Array.from(ids, String))];
+		const id_set = new Set(Array.from(ids, String));
+		if (id_set.size === 0 || id_set.size > 100) throw new RangeError("Multi-lock requests must contain between 1 and 100 unique IDs");
+		const lock_ids = [...id_set];
+		const token = (0, node_crypto.randomBytes)(16).toString("base64");
 		const redis_script_arguments = [
 			token,
 			String(ttl),
@@ -202,15 +213,16 @@ var RedisLocker = class {
 	* @param key Key to lock.
 	* @param options -
 	* @param options.ttl - Default time to live in milliseconds; a positive safe integer.
-	* @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-	* @param options.retry_count - Maximum number of lock aquisition attempts.
-	* @throws {RangeError} If the default TTL is not a positive safe integer.
+	* @param options.retry_interval - Interval between lock acquisition attempts in milliseconds; an integer from 0 to 2147483647.
+	* @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
+	* @throws {RangeError} If the default TTL or a retry option is invalid.
 	*/
 	constructor(redisClient, key, options) {
 		this.#ttl = (options === null || options === void 0 ? void 0 : options.ttl) === void 0 ? 5e3 : options.ttl;
 		validateDuration(this.#ttl);
-		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) ?? 100;
-		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) ?? 10;
+		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) === void 0 ? 100 : options.retry_interval;
+		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) === void 0 ? 10 : options.retry_count;
+		validateRetryOptions(this.#retry_interval, this.#retry_count);
 		this._redisClient = redisClient;
 		this._redis_key = REDIS_PREFIX + key;
 	}

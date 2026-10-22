@@ -19,9 +19,9 @@ export declare class RedisMultiLocker {
    * @param namespace - Namespace to create keys in.
    * @param options -
    * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
-   * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-   * @param options.retry_count - Maximum number of lock aquisition attempts.
-   * @throws {RangeError} If the default TTL is not a positive safe integer.
+   * @param options.retry_interval - Interval between lock acquisition attempts in milliseconds; an integer from 0 to 2147483647.
+   * @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
+   * @throws {RangeError} If the default TTL or a retry option is invalid.
    */
   constructor(redisClient: RedisClient, namespace: string, options?: {
     ttl?: number;
@@ -29,11 +29,10 @@ export declare class RedisMultiLocker {
     retry_count?: number;
   });
   /**
-   * @param ids - IDs to lock in the namespace; an array or Set with 1–100 elements.
-   * Duplicate array elements count toward the limit.
+   * @param ids - IDs to lock in the namespace; an array or Set with 1–100 unique IDs after conversion to strings.
    * @param ttl Time to live in milliseconds; a positive safe integer.
    * @returns Lock object.
-   * @throws {RangeError} If the ID count is outside 1–100 or the TTL is not a positive safe integer.
+   * @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
    */
   lock(ids: (string | number)[] | Set<string | number>, ttl?: number): Promise<RedisMultiLock>;
 }
@@ -67,9 +66,9 @@ export declare class RedisLocker {
    * @param key Key to lock.
    * @param options -
    * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
-   * @param options.retry_interval - Interval between lock aquisition attempts in milliseconds.
-   * @param options.retry_count - Maximum number of lock aquisition attempts.
-   * @throws {RangeError} If the default TTL is not a positive safe integer.
+   * @param options.retry_interval - Interval between lock acquisition attempts in milliseconds; an integer from 0 to 2147483647.
+   * @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
+   * @throws {RangeError} If the default TTL or a retry option is invalid.
    */
   constructor(redisClient: RedisClient, key: string, options?: {
     ttl?: number;
