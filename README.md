@@ -17,18 +17,18 @@ A powerful and flexible distributed locking library for Redis with TypeScript su
 ## Installation
 
 ```bash
-bun i @redis-x/locker @redis-x/client redis
+bun i @redis-x/locker redis
 # or with pnpm
-pnpm add @redis-x/locker @redis-x/client redis
+pnpm add @redis-x/locker redis
 # or with npm
-npm install @redis-x/locker @redis-x/client redis
+npm install @redis-x/locker redis
 ```
 
 **Requirements**:
 
 - Node.js 16 or newer;
 - `redis@^4.6`;
-- [`@redis-x/client`](https://github.com/redis-x/client);
+- (optional) [`@redis-x/client`](https://github.com/redis-x/client);
 - Redis server **7.4** or newer.
 
 ## Basic Usage
