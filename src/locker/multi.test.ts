@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { redisClient } from '../../test/redis.js';
+import { redisClient, redisXClient } from '../../test/redis.js';
 import {
 	RedisLockerAcquireError,
 	RedisLockerReleaseError,
@@ -19,7 +19,7 @@ function createLocker(
 	name: string,
 	options?: ConstructorParameters<typeof RedisMultiLocker>[2],
 ): RedisMultiLocker {
-	const locker = new RedisMultiLocker(redisClient, `test-multi-${name}`, {
+	const locker = new RedisMultiLocker(redisXClient, `test-multi-${name}`, {
 		retry_count: 1,
 		...options,
 	});
@@ -162,16 +162,36 @@ test('client clock changes cannot steal another lock', async () => {
 
 test('request transport delays do not consume the server-side TTL', async () => {
 	const locker = createLocker('request-delay');
-	const evaluate = redisClient.EVAL.bind(redisClient);
-	vi.spyOn(redisClient, 'EVAL').mockImplementationOnce(async (...args) => {
-		await asyncTimeout(200);
-		return evaluate(...args);
-	});
+	const sendCommand = redisClient.sendCommand.bind(redisClient);
+	vi.spyOn(redisClient, 'sendCommand').mockImplementation(
+		async (args, options) => {
+			if (args[0] === 'EVALSHA') {
+				await asyncTimeout(200);
+			}
+
+			return sendCommand(args, options);
+		},
+	);
 	const lock = await locker.lock(['id'], 1000);
 
 	const ttls = await remainingTtls(locker, ['id']);
 	expect(ttls[0]).toBeGreaterThan(900);
 	await lock.release();
+});
+
+test('runs scripts by SHA and reloads them after the script cache is flushed', async () => {
+	const locker = createLocker('script-cache');
+	const sendCommand = vi.spyOn(redisClient, 'sendCommand');
+	const lock = await locker.lock(['id']);
+	await lock.extend(1000);
+
+	await redisClient.SCRIPT_FLUSH();
+	await lock.extend(1000);
+	await lock.release();
+
+	const commands = sendCommand.mock.calls.map(([[command]]) => command);
+	expect(commands).toContain('EVALSHA');
+	expect(commands).not.toContain('EVAL');
 });
 
 test("expired handles cannot extend or release a successor's lock", async () => {

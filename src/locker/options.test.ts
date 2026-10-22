@@ -1,3 +1,4 @@
+import { RedisXClient } from '@redis-x/client';
 import { createClient } from 'redis';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -7,6 +8,47 @@ import {
 	type RedisMultiLock,
 	RedisMultiLocker,
 } from '../main.js';
+
+/**
+ * Creates an unconnected client that answers lock commands without Redis.
+ * @param isSuccessful Whether the SET or EVALSHA command with this 1-based number succeeds.
+ * @returns Client and its command spy.
+ */
+function createMockClient(
+	isSuccessful: (attempt: number) => boolean = () => true,
+) {
+	const client = createClient();
+	let attempt = 0;
+	const sendCommand = vi
+		.spyOn(client, 'sendCommand')
+		.mockImplementation(([command]) => {
+			if (command === 'SCRIPT') {
+				return Promise.resolve('sha');
+			}
+
+			attempt++;
+			if (command === 'SET') {
+				return Promise.resolve(isSuccessful(attempt) ? 'OK' : null);
+			}
+
+			return Promise.resolve(isSuccessful(attempt) ? 1 : 0);
+		});
+
+	return { client, sendCommand };
+}
+
+/**
+ * Lists the commands a mock client received, except script loading.
+ * @param sendCommand Command spy from {@link createMockClient}.
+ * @returns Command names.
+ */
+function lockCommands(
+	sendCommand: ReturnType<typeof createMockClient>['sendCommand'],
+): unknown[] {
+	return sendCommand.mock.calls
+		.map(([[command]]) => command)
+		.filter((command) => command !== 'SCRIPT');
+}
 
 /**
  * Acquires one resource with either locker implementation.
@@ -45,34 +87,26 @@ describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 		null,
 		'1000',
 	])('rejects invalid duration %s before Redis commands', async (duration) => {
-		const client = createClient();
-		const set = vi.spyOn(client, 'SET').mockResolvedValue('OK');
-		const evaluate = vi.spyOn(client, 'EVAL').mockResolvedValue(1);
+		const { client, sendCommand } = createMockClient();
 		const ttl = duration as number;
 
 		expect(() => new Locker(client, 'validation', { ttl })).toThrow(RangeError);
-		expect(set).not.toHaveBeenCalled();
-		expect(evaluate).not.toHaveBeenCalled();
+		expect(sendCommand).not.toHaveBeenCalled();
 
 		const locker = new Locker(client, 'validation');
 		await expect(acquire(locker, ttl)).rejects.toThrow(RangeError);
-		expect(set).not.toHaveBeenCalled();
-		expect(evaluate).not.toHaveBeenCalled();
+		expect(sendCommand).not.toHaveBeenCalled();
 
 		const lock = await acquire(locker);
-		set.mockClear();
-		evaluate.mockClear();
+		sendCommand.mockClear();
 		await expect(lock.extend(ttl)).rejects.toThrow(RangeError);
-		expect(set).not.toHaveBeenCalled();
-		expect(evaluate).not.toHaveBeenCalled();
+		expect(sendCommand).not.toHaveBeenCalled();
 	});
 
 	test.each([1, 1000, Number.MAX_SAFE_INTEGER])(
 		'accepts positive safe duration %s',
 		async (ttl) => {
-			const client = createClient();
-			vi.spyOn(client, 'SET').mockResolvedValue('OK');
-			vi.spyOn(client, 'EVAL').mockResolvedValue(1);
+			const { client } = createMockClient();
 			const locker = new Locker(client, 'validation', { ttl });
 
 			await acquire(locker);
@@ -84,9 +118,7 @@ describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 	test.each([1, 3])(
 		'waits only between %s failed attempts',
 		async (retry_count) => {
-			const client = createClient();
-			const set = vi.spyOn(client, 'SET').mockResolvedValue(null);
-			const evaluate = vi.spyOn(client, 'EVAL').mockResolvedValue(0);
+			const { client, sendCommand } = createMockClient(() => false);
 			const timeout = vi.spyOn(globalThis, 'setTimeout');
 			const locker = new Locker(client, 'retries', {
 				retry_count,
@@ -94,23 +126,13 @@ describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 			});
 
 			await expect(acquire(locker)).rejects.toThrow(RedisLockerAcquireError);
-			expect(set.mock.calls.length + evaluate.mock.calls.length).toBe(
-				retry_count,
-			);
+			expect(lockCommands(sendCommand)).toHaveLength(retry_count);
 			expect(timeout).toHaveBeenCalledTimes(retry_count - 1);
 		},
 	);
 
 	test('stops retrying after a successful second attempt', async () => {
-		const client = createClient();
-		const set = vi
-			.spyOn(client, 'SET')
-			.mockResolvedValueOnce(null)
-			.mockResolvedValue('OK');
-		const evaluate = vi
-			.spyOn(client, 'EVAL')
-			.mockResolvedValueOnce(0)
-			.mockResolvedValue(1);
+		const { client, sendCommand } = createMockClient((attempt) => attempt > 1);
 		const timeout = vi.spyOn(globalThis, 'setTimeout');
 		const locker = new Locker(client, 'retries', {
 			retry_count: 3,
@@ -118,8 +140,34 @@ describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 		});
 
 		await acquire(locker);
-		expect(set.mock.calls.length + evaluate.mock.calls.length).toBe(2);
+		expect(lockCommands(sendCommand)).toHaveLength(2);
 		expect(timeout).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe.each(LOCKERS)('%s locker clients', (_, Locker) => {
+	test('accepts a RedisX client', async () => {
+		const { client, sendCommand } = createMockClient();
+		const locker = new Locker(new RedisXClient(client), 'client');
+
+		const lock = await acquire(locker);
+		await lock.release();
+		expect(lockCommands(sendCommand)).toHaveLength(2);
+	});
+
+	test('loads each script once for lockers sharing a redis client', async () => {
+		const { client, sendCommand } = createMockClient();
+		const first = await acquire(new Locker(client, 'first'));
+		const second = await acquire(new Locker(client, 'second'));
+		await first.release();
+		await second.release();
+
+		const loaded = sendCommand.mock.calls
+			.filter(([[command]]) => command === 'SCRIPT')
+			.map(([args]) => args[2]);
+		expect(loaded.length).toBeGreaterThan(0);
+		expect(new Set(loaded).size).toBe(loaded.length);
+		expect(lockCommands(sendCommand)).not.toContain('EVAL');
 	});
 });
 
@@ -167,33 +215,36 @@ describe('multi-lock batch limits', () => {
 	test.each([0, 101, 5000])(
 		'rejects arrays and Sets of %s IDs before Redis commands',
 		async (count) => {
-			const client = createClient();
-			const evaluate = vi.spyOn(client, 'EVAL');
+			const { client, sendCommand } = createMockClient();
 			const locker = new RedisMultiLocker(client, 'batch');
 			const ids = Array.from({ length: count }, (_, index) => index);
 
 			await expect(locker.lock(ids)).rejects.toThrow(RangeError);
 			await expect(locker.lock(new Set(ids))).rejects.toThrow(RangeError);
-			expect(evaluate).not.toHaveBeenCalled();
+			expect(sendCommand).not.toHaveBeenCalled();
 		},
 	);
 
 	test('counts unique IDs after converting them to strings', async () => {
-		const client = createClient();
-		const evaluate = vi.spyOn(client, 'EVAL').mockResolvedValue(1);
+		const { client, sendCommand } = createMockClient();
 		const locker = new RedisMultiLocker(client, 'batch');
 		const ids = Array.from({ length: 100 }, (_, index) => index);
 
 		await locker.lock([...ids, ...ids.map(String)]);
-		expect(evaluate).toHaveBeenCalledWith(expect.any(String), {
-			keys: [locker._redis_key],
-			arguments: [expect.any(String), '5000', ...ids.map(String)],
-		});
+		expect(sendCommand).toHaveBeenLastCalledWith([
+			'EVALSHA',
+			'sha',
+			'1',
+			locker._redis_key,
+			expect.any(String),
+			'5000',
+			...ids.map(String),
+		]);
 
-		evaluate.mockClear();
+		sendCommand.mockClear();
 		await expect(
 			locker.lock([...ids, ...ids.map(String), 100]),
 		).rejects.toThrow(RangeError);
-		expect(evaluate).not.toHaveBeenCalled();
+		expect(sendCommand).not.toHaveBeenCalled();
 	});
 });

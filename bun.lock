@@ -7,6 +7,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.4",
         "@kirick/lint": "0.4.1",
+        "@redis-x/client": "file:/tmp/devpack/github/@redis-x/client/pack-be7f55c.tar.gz",
         "@types/node": "^22.14.1",
         "eslint": "10.7.0",
         "oxlint": "1.74.0",
@@ -17,6 +18,7 @@
         "vitest": "5.0.3",
       },
       "peerDependencies": {
+        "@redis-x/client": "^0.3.2",
         "redis": "^4.6",
       },
     },
@@ -125,6 +127,8 @@
     "@publint/pack": ["@publint/pack@0.1.7", "", { "dependencies": { "tinyexec": "^1.3.0" } }, "sha512-4EDEmvxWtgsCnnVeBvtFIFZtUhPPt1+bA9JrSwU4Sa//6oKtzCSlGGXYJr44OD9aGISymbieJ4mCKHUygUDU+g=="],
 
     "@quansync/fs": ["@quansync/fs@1.1.0", "", { "dependencies": { "quansync": "^1.0.0" } }, "sha512-qAPG/t3HqML1TlN7sY/pTbEjzFVAKsMjNNMGheyDosro+kT4iw2KCUoHcVdmliwWjorm4elZbgNQyU2eD97eDg=="],
+
+    "@redis-x/client": ["@redis-x/client@/tmp/devpack/github/@redis-x/client/pack-be7f55c.tar.gz", { "peerDependencies": { "redis": "^4.6" } }, "sha512-jyqArDX0SGsWyW1Sq99b2IYyrUe2KSsW0GL8qzglTpctQNsCQqgJw3spJCoqA3Ns2pb3atNAmYEUkfwlotn/JA=="],
 
     "@redis/bloom": ["@redis/bloom@1.2.0", "", { "peerDependencies": { "@redis/client": "^1.0.0" } }, "sha512-HG2DFjYKbpNmVXsa0keLHp/3leGJz1mjh09f2RLGGLQZzSHpkmZWuwJbAvo3QcRY8p80m5+ZdXZdYOSBLlp7Cg=="],
 

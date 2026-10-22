@@ -1,3 +1,4 @@
+import { RedisXClient } from '@redis-x/client';
 import { createClient } from 'redis';
 
 export const redisClient = createClient({
@@ -8,3 +9,5 @@ export const redisClient = createClient({
 
 await redisClient.connect();
 await redisClient.FLUSHDB();
+
+export const redisXClient: RedisXClient = new RedisXClient(redisClient);

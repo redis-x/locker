@@ -20,6 +20,7 @@
 		"node": ">=16.0.0"
 	},
 	"peerDependencies": {
+		"@redis-x/client": "file:/tmp/devpack/github/@redis-x/client/pack-be7f55c.tar.gz",
 		"redis": "^4.6"
 	},
 	"devDependencies": {
@@ -33,6 +34,9 @@
 		"typescript": "6.0.3",
 		"unplugin-unused": "0.6.0",
 		"vitest": "5.0.3"
+	},
+	"_devpack": {
+		"@redis-x/client": "../client"
 	},
 	"scripts": {
 		"build": "tsdown src/main.ts --format esm --format cjs --dts --publint --unused",

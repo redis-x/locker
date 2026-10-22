@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import type { RedisXClient } from '@redis-x/client';
 import { RedisLockerAcquireError, RedisLockerReleaseError } from '../error.js';
+import { getScripts, type Scripts } from '../scripts.js';
 import {
 	asyncTimeout,
+	getRedisXClient,
 	REDIS_PREFIX,
 	type RedisClient,
 	validateDuration,
@@ -14,13 +17,16 @@ export class RedisLocker {
 	#retry_count: number;
 	/** @internal */
 	// eslint-disable-next-line unicorn/prefer-private-class-fields
-	_redisClient: RedisClient;
+	_redisXClient: RedisXClient;
+	/** @internal */
+	// eslint-disable-next-line unicorn/prefer-private-class-fields
+	_scripts: Scripts;
 	/** @internal */
 	// eslint-disable-next-line unicorn/prefer-private-class-fields
 	_redis_key: string;
 
 	/**
-	 * @param redisClient Redis client from `redis` package.
+	 * @param redisClient Client from the `redis` package or a RedisX client.
 	 * @param key Key to lock.
 	 * @param options -
 	 * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
@@ -29,7 +35,7 @@ export class RedisLocker {
 	 * @throws {RangeError} If the default TTL or a retry option is invalid.
 	 */
 	constructor(
-		redisClient: RedisClient,
+		redisClient: RedisClient | RedisXClient,
 		key: string,
 		options?: {
 			ttl?: number;
@@ -45,7 +51,8 @@ export class RedisLocker {
 			options?.retry_count === undefined ? 10 : options.retry_count;
 		validateRetryOptions(this.#retry_interval, this.#retry_count);
 
-		this._redisClient = redisClient;
+		this._redisXClient = getRedisXClient(redisClient);
+		this._scripts = getScripts(this._redisXClient);
 		this._redis_key = REDIS_PREFIX + key;
 	}
 
@@ -61,7 +68,7 @@ export class RedisLocker {
 
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
 			// oxlint-disable-next-line no-await-in-loop
-			const result = await this._redisClient.SET(this._redis_key, token, {
+			const result = await this._redisXClient.SET(this._redis_key, token, {
 				NX: true,
 				PX: ttl,
 			});
@@ -101,12 +108,10 @@ export class RedisLock {
 	 */
 	async extend(time: number): Promise<void> {
 		validateDuration(time);
-		const result = await this.#locker._redisClient.EVAL(
-			'local pttl = redis.call("PTTL", KEYS[1]) if pttl > 0 and redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], pttl + tonumber(ARGV[2])) else return 0 end',
-			{
-				keys: [this.#locker._redis_key],
-				arguments: [this.#token, String(time)],
-			},
+		const result = await this.#locker._scripts.single_extend.executeWithKeys(
+			[this.#locker._redis_key],
+			this.#token,
+			String(time),
 		);
 
 		if (result === 0) {
@@ -119,12 +124,9 @@ export class RedisLock {
 	 * @returns -
 	 */
 	async release(): Promise<void> {
-		const result = await this.#locker._redisClient.EVAL(
-			'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end',
-			{
-				keys: [this.#locker._redis_key],
-				arguments: [this.#token],
-			},
+		const result = await this.#locker._scripts.single_release.executeWithKeys(
+			[this.#locker._redis_key],
+			this.#token,
 		);
 
 		if (result === 0) {

@@ -1,3 +1,4 @@
+import { RedisXClient } from "@redis-x/client";
 import { RedisClientType, RedisFunctions, RedisModules, RedisScripts } from "redis";
 //#region src/error.d.ts
 export declare class RedisLockerAcquireError extends Error {
@@ -15,7 +16,7 @@ export declare class RedisMultiLocker {
   #private;
   /**
    * Creates a multi-resource locker. Requires Redis server 7.4 or newer.
-   * @param redisClient - Redis client from the `redis` package.
+   * @param redisClient - Client from the `redis` package or a RedisX client.
    * @param namespace - Namespace to create keys in.
    * @param options -
    * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
@@ -23,7 +24,7 @@ export declare class RedisMultiLocker {
    * @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
    * @throws {RangeError} If the default TTL or a retry option is invalid.
    */
-  constructor(redisClient: RedisClient, namespace: string, options?: {
+  constructor(redisClient: RedisClient | RedisXClient, namespace: string, options?: {
     ttl?: number;
     retry_interval?: number;
     retry_count?: number;
@@ -62,7 +63,7 @@ export declare class RedisMultiLock {
 export declare class RedisLocker {
   #private;
   /**
-   * @param redisClient Redis client from `redis` package.
+   * @param redisClient Client from the `redis` package or a RedisX client.
    * @param key Key to lock.
    * @param options -
    * @param options.ttl - Default time to live in milliseconds; a positive safe integer.
@@ -70,7 +71,7 @@ export declare class RedisLocker {
    * @param options.retry_count - Maximum number of lock acquisition attempts; a positive safe integer.
    * @throws {RangeError} If the default TTL or a retry option is invalid.
    */
-  constructor(redisClient: RedisClient, key: string, options?: {
+  constructor(redisClient: RedisClient | RedisXClient, key: string, options?: {
     ttl?: number;
     retry_interval?: number;
     retry_count?: number;

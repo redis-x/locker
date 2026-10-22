@@ -17,18 +17,19 @@ A powerful and flexible distributed locking library for Redis with TypeScript su
 ## Installation
 
 ```bash
-bun i @redis-x/locker redis
+bun i @redis-x/locker @redis-x/client redis
 # or with pnpm
-pnpm add @redis-x/locker redis
+pnpm add @redis-x/locker @redis-x/client redis
 # or with npm
-npm install @redis-x/locker redis
+npm install @redis-x/locker @redis-x/client redis
 ```
 
 **Requirements**:
 
 - Node.js 16 or newer;
 - `redis@^4.6`;
-- Redis server **7.4 or newer** for `RedisMultiLocker`.
+- [`@redis-x/client`](https://github.com/redis-x/client);
+- Redis server **7.4** or newer.
 
 ## Basic Usage
 
@@ -40,6 +41,8 @@ import { createClient } from 'redis';
 const redisClient = createClient();
 await redisClient.connect();
 ```
+
+Lockers accept either a plain `redis` client or a `RedisXClient` from [`@redis-x/client`](https://github.com/redis-x/client) package. If you already use `RedisXClient` in your project, pass it to the constructor to avoid duplicating `RedisXClient` instances.
 
 ### Single Resource Locking
 
