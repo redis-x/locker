@@ -1,0 +1,62 @@
+{
+	"name": "@redis-x/locker",
+	"version": "0.2.1",
+	"description": "",
+	"publishConfig": {
+		"access": "public"
+	},
+	"type": "module",
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": {
+			"types": {
+				"import": "./dist/main.d.mts",
+				"require": "./dist/main.d.cts"
+			},
+			"import": "./dist/main.mjs",
+			"require": "./dist/main.cjs"
+		}
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"peerDependencies": {
+		"@redis-x/client": "^0.4.0",
+		"redis": "^4.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.4",
+		"@kirick/lint": "0.4.1",
+		"@types/node": "^22.14.1",
+		"eslint": "10.7.0",
+		"oxlint": "1.74.0",
+		"publint": "0.3.25",
+		"tsdown": "0.23.0",
+		"typescript": "6.0.3",
+		"unplugin-unused": "0.6.0",
+		"vitest": "5.0.3"
+	},
+	"_devpack": {
+		"@redis-x/client": "../client"
+	},
+	"scripts": {
+		"build": "tsdown src/main.ts --format esm --format cjs --dts --publint --unused",
+		"check": "lint && bun run test && bun run build",
+		"redis:up": "docker ps | grep test-redis >/dev/null || docker run --rm -d -p 16379:6379 --name test-redis redis:7.4-alpine",
+		"test": "bun run build && bun run redis:up && bun test && npm run test:vitest",
+		"test:vitest": "vitest run --no-file-parallelism"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/redis-x/locker.git"
+	},
+	"keywords": [],
+	"author": "Daniil Kirichenko (https://twitter.com/kirickme)",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/redis-x/locker/issues"
+	},
+	"homepage": "https://github.com/redis-x/locker#readme"
+}
