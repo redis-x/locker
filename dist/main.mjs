@@ -169,10 +169,11 @@ var RedisMultiLock = class {
 	}
 	/**
 	* Releases lock.
+	* @param is_silent Do not throw if the lock has expired or belongs to someone else.
 	* @returns -
 	*/
-	async release() {
-		if (await this.#locker._scripts.multi_release.executeWithKeys([this.#locker._redis_key], this.#token, ...this.#ids) === 0) throw new RedisLockerReleaseError();
+	async release(is_silent = false) {
+		if (await this.#locker._scripts.multi_release.executeWithKeys([this.#locker._redis_key], this.#token, ...this.#ids) === 0 && !is_silent) throw new RedisLockerReleaseError();
 	}
 };
 //#endregion
@@ -248,10 +249,11 @@ var RedisLock = class {
 	}
 	/**
 	* Releases lock.
+	* @param is_silent Do not throw if the lock has expired or belongs to someone else.
 	* @returns -
 	*/
-	async release() {
-		if (await this.#locker._scripts.single_release.executeWithKeys([this.#locker._redis_key], this.#token) === 0) throw new RedisLockerReleaseError();
+	async release(is_silent = false) {
+		if (await this.#locker._scripts.single_release.executeWithKeys([this.#locker._redis_key], this.#token) === 0 && !is_silent) throw new RedisLockerReleaseError();
 	}
 };
 //#endregion

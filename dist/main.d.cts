@@ -54,9 +54,10 @@ export declare class RedisMultiLock {
   extend(time: number): Promise<void>;
   /**
    * Releases lock.
+   * @param is_silent Do not throw if the lock has expired or belongs to someone else.
    * @returns -
    */
-  release(): Promise<void>;
+  release(is_silent?: boolean): Promise<void>;
 }
 //#endregion
 //#region src/locker/single.d.ts
@@ -100,9 +101,10 @@ export declare class RedisLock {
   extend(time: number): Promise<void>;
   /**
    * Releases lock.
+   * @param is_silent Do not throw if the lock has expired or belongs to someone else.
    * @returns -
    */
-  release(): Promise<void>;
+  release(is_silent?: boolean): Promise<void>;
 }
 //#endregion
 export {};
