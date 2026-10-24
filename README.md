@@ -1,6 +1,7 @@
 # @redis-x/locker
 
 [![npm version](https://img.shields.io/npm/v/@redis-x/locker.svg)](https://www.npmjs.com/package/@redis-x/locker)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/@redis-x/locker?style=shieldsio&label=npmx.dev)](https://npmx.dev/package/@redis-x/locker)
 [![license](https://img.shields.io/npm/l/@redis-x/locker.svg?color=blue)](https://github.com/redis-x/locker/blob/main/LICENSE)
 
 A powerful and flexible distributed locking library for Redis with TypeScript support.
@@ -79,7 +80,7 @@ Both `RedisLocker` and `RedisMultiLocker` accept the same options:
 | Option           | Default | Description                                                     |
 | ---------------- | ------: | --------------------------------------------------------------- |
 | `ttl`            |  `5000` | Lock lifetime in milliseconds. Can be overridden in `lock()`.   |
-| `retry_interval` |   `100` | Milliseconds to wait between attempts, from 0 to 2147483647.    |
+| `retry_interval` |   `100` | Milliseconds to wait between attempts.                          |
 | `retry_count`    |    `10` | Maximum number of attempts, including the first one.            |
 
 Invalid values throw a `RangeError`.
@@ -153,7 +154,7 @@ try {
 ### Handling Lock Errors
 
 - `RedisLockerAcquireError` is thrown by `lock()` when every attempt failed because the resource is locked, and by `extend()` when the lock has expired or belongs to someone else.
-- `RedisLockerReleaseError` is thrown by `release()` when the lock has expired or belongs to someone else.
+- `RedisLockerReleaseError` is thrown by `release()` when the lock has expired or belongs to someone else. Call `release(true)` to skip it: a lock that belongs to someone else stays untouched either way.
 - `RangeError` is thrown for an invalid TTL, retry option or number of IDs, before anything is sent to Redis.
 
 ```typescript
@@ -168,3 +169,5 @@ try {
   }
 }
 ```
+
+You can ignore `RedisLockerReleaseError` by calling `lock?.release(true)`. However, if you encounter `RedisLockerReleaseError`, it means the lock has expired before task completion. You should consider setting lock lifetime to a longer duration to avoid issues.

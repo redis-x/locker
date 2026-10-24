@@ -72,3 +72,35 @@ test('lock extend', async () => {
 	const promise_lock_4 = locker.lock();
 	await expect(promise_lock_4).resolves.toBeInstanceOf(RedisLock);
 });
+
+const silent_locker = new RedisLocker(redisClient, 'test-silent', {
+	ttl: TIMEOUT,
+	retry_interval: 0,
+	retry_count: 1,
+});
+
+test('silent release frees a held lock', async () => {
+	const lock = await silent_locker.lock();
+	await lock.release(true);
+
+	const next = await silent_locker.lock();
+	expect(next).toBeInstanceOf(RedisLock);
+	await next.release();
+});
+
+test('silent release ignores an already released lock', async () => {
+	const lock = await silent_locker.lock();
+	await lock.release();
+
+	await expect(lock.release(true)).resolves.toBeUndefined();
+});
+
+test("silent release of an expired lock keeps the successor's lock", async () => {
+	const stale = await silent_locker.lock(40);
+	await asyncTimeout(100);
+	const current = await silent_locker.lock();
+
+	await expect(stale.release(true)).resolves.toBeUndefined();
+	await expect(silent_locker.lock()).rejects.toThrow(RedisLockerAcquireError);
+	await current.release();
+});

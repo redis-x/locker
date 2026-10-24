@@ -231,6 +231,44 @@ test.each(['missing', 'replaced'])(
 	},
 );
 
+test('silent release frees held IDs and ignores a released handle', async () => {
+	const locker = createLocker('silent-released');
+	const original = await locker.lock([1, 2]);
+	await original.release(true);
+	const current = await locker.lock([1, 2]);
+
+	await expect(original.release(true)).resolves.toBeUndefined();
+	await expect(locker.lock([1])).rejects.toThrow(RedisLockerAcquireError);
+	await current.release();
+});
+
+test("silent release of an expired handle keeps the successor's lock", async () => {
+	const locker = createLocker('silent-stale');
+	const stale = await locker.lock(['one', 'two'], 40);
+	await asyncTimeout(100);
+	const current = await locker.lock(['one', 'two']);
+	const before = await remainingTtls(locker, ['one', 'two']);
+
+	await expect(stale.release(true)).resolves.toBeUndefined();
+	const after = await remainingTtls(locker, ['one', 'two']);
+	expect(after[0]).toBeGreaterThan(0);
+	expect(after[0]).toBeLessThanOrEqual(before[0]);
+	expect(after[1]).toBeGreaterThan(0);
+	expect(after[1]).toBeLessThanOrEqual(before[1]);
+	await current.release();
+});
+
+test('silent release of a partially lost batch keeps the remaining IDs locked', async () => {
+	const locker = createLocker('silent-partial');
+	const old = await locker.lock(['one', 'two']);
+	await redisClient.HDEL(locker._redis_key, 'two');
+
+	await expect(old.release(true)).resolves.toBeUndefined();
+	const [remaining] = await remainingTtls(locker, ['one']);
+	expect(remaining).toBeGreaterThan(0);
+	await expect(locker.lock(['one'])).rejects.toThrow(RedisLockerAcquireError);
+});
+
 test('extension adds to the remaining TTL without affecting other owners', async () => {
 	const locker = createLocker('extend');
 	const owner = await locker.lock(['one', 'two'], 5000);

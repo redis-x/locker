@@ -135,16 +135,17 @@ export class RedisMultiLock {
 
 	/**
 	 * Releases lock.
+	 * @param is_silent Do not throw if the lock has expired or belongs to someone else.
 	 * @returns -
 	 */
-	async release(): Promise<void> {
+	async release(is_silent = false): Promise<void> {
 		const result = await this.#locker._scripts.multi_release.executeWithKeys(
 			[this.#locker._redis_key],
 			this.#token,
 			...this.#ids,
 		);
 
-		if (result === 0) {
+		if (result === 0 && !is_silent) {
 			throw new RedisLockerReleaseError();
 		}
 	}
