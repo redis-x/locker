@@ -1,4 +1,3 @@
-import { RedisXClient } from '@redis-x/client';
 import type {
 	RedisClientType,
 	RedisFunctions,
@@ -14,30 +13,6 @@ export type RedisClient = RedisClientType<
 	RedisFunctions,
 	RedisScripts
 >;
-
-const REDIS_X_CLIENTS = new WeakMap<RedisClient, RedisXClient>();
-
-/**
- * Returns the RedisX client to run commands with, wrapping each `redis` client only once.
- * @param client Client from the `redis` package or a RedisX client.
- * @returns RedisX client.
- */
-export function getRedisXClient(
-	client: RedisClient | RedisXClient,
-): RedisXClient {
-	// Checked by shape, so a RedisX client from another package copy is not wrapped again.
-	if ('createScript' in client) {
-		return client;
-	}
-
-	let redisXClient = REDIS_X_CLIENTS.get(client);
-	if (!redisXClient) {
-		redisXClient = new RedisXClient(client);
-		REDIS_X_CLIENTS.set(client, redisXClient);
-	}
-
-	return redisXClient;
-}
 
 /**
  * Validates a TTL or extension duration before sending it to Redis.

@@ -1,10 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import type { RedisXClient } from '@redis-x/client';
+import { getRedisXClient, type RedisXClient } from '@redis-x/client';
 import { RedisLockerAcquireError, RedisLockerReleaseError } from '../error.js';
 import { getScripts, type Scripts } from '../scripts.js';
 import {
 	asyncTimeout,
-	getRedisXClient,
 	REDIS_PREFIX,
 	type RedisClient,
 	validateDuration,

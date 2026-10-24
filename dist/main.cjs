@@ -53,21 +53,6 @@ function getScripts(redisXClient) {
 //#region src/utils.ts
 const REDIS_PREFIX = "@x:locker:";
 const MAX_TIMEOUT = 2147483647;
-const REDIS_X_CLIENTS = /* @__PURE__ */ new WeakMap();
-/**
-* Returns the RedisX client to run commands with, wrapping each `redis` client only once.
-* @param client Client from the `redis` package or a RedisX client.
-* @returns RedisX client.
-*/
-function getRedisXClient(client) {
-	if ("createScript" in client) return client;
-	let redisXClient = REDIS_X_CLIENTS.get(client);
-	if (!redisXClient) {
-		redisXClient = new _redis_x_client.RedisXClient(client);
-		REDIS_X_CLIENTS.set(client, redisXClient);
-	}
-	return redisXClient;
-}
 /**
 * Validates a TTL or extension duration before sending it to Redis.
 * @param duration Time in milliseconds.
@@ -122,7 +107,7 @@ var RedisMultiLocker = class {
 		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) === void 0 ? 100 : options.retry_interval;
 		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) === void 0 ? 10 : options.retry_count;
 		validateRetryOptions(this.#retry_interval, this.#retry_count);
-		this._scripts = getScripts(getRedisXClient(redisClient));
+		this._scripts = getScripts((0, _redis_x_client.getRedisXClient)(redisClient));
 		this._redis_key = REDIS_PREFIX + namespace;
 	}
 	/**
@@ -204,7 +189,7 @@ var RedisLocker = class {
 		this.#retry_interval = (options === null || options === void 0 ? void 0 : options.retry_interval) === void 0 ? 100 : options.retry_interval;
 		this.#retry_count = (options === null || options === void 0 ? void 0 : options.retry_count) === void 0 ? 10 : options.retry_count;
 		validateRetryOptions(this.#retry_interval, this.#retry_count);
-		this._redisXClient = getRedisXClient(redisClient);
+		this._redisXClient = (0, _redis_x_client.getRedisXClient)(redisClient);
 		this._scripts = getScripts(this._redisXClient);
 		this._redis_key = REDIS_PREFIX + key;
 	}
