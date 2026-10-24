@@ -1,4 +1,4 @@
-import { RedisXClient } from '@redis-x/client';
+import { getRedisXClient, RedisXClient } from '@redis-x/client';
 import { createClient } from 'redis';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -168,6 +168,20 @@ describe.each(LOCKERS)('%s locker clients', (_, Locker) => {
 		expect(loaded.length).toBeGreaterThan(0);
 		expect(new Set(loaded).size).toBe(loaded.length);
 		expect(lockCommands(sendCommand)).not.toContain('EVAL');
+	});
+
+	test('shares the RedisX client that getRedisXClient returns for a redis client', async () => {
+		const { client, sendCommand } = createMockClient();
+		const plain = await acquire(new Locker(client, 'plain'));
+		const shared = await acquire(new Locker(getRedisXClient(client), 'shared'));
+		await plain.release();
+		await shared.release();
+
+		const loaded = sendCommand.mock.calls
+			.filter(([[command]]) => command === 'SCRIPT')
+			.map(([args]) => args[2]);
+		expect(loaded.length).toBeGreaterThan(0);
+		expect(new Set(loaded).size).toBe(loaded.length);
 	});
 });
 

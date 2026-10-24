@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { RedisXClient } from "@redis-x/client";
+import { getRedisXClient } from "@redis-x/client";
 //#region src/error.ts
 var RedisLockerAcquireError = class extends Error {
 	constructor() {
@@ -52,21 +52,6 @@ function getScripts(redisXClient) {
 //#region src/utils.ts
 const REDIS_PREFIX = "@x:locker:";
 const MAX_TIMEOUT = 2147483647;
-const REDIS_X_CLIENTS = /* @__PURE__ */ new WeakMap();
-/**
-* Returns the RedisX client to run commands with, wrapping each `redis` client only once.
-* @param client Client from the `redis` package or a RedisX client.
-* @returns RedisX client.
-*/
-function getRedisXClient(client) {
-	if ("createScript" in client) return client;
-	let redisXClient = REDIS_X_CLIENTS.get(client);
-	if (!redisXClient) {
-		redisXClient = new RedisXClient(client);
-		REDIS_X_CLIENTS.set(client, redisXClient);
-	}
-	return redisXClient;
-}
 /**
 * Validates a TTL or extension duration before sending it to Redis.
 * @param duration Time in milliseconds.
