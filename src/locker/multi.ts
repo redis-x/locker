@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { getRedisXClient, type RedisXClient } from '@redis-x/client';
-import { RedisLockerAcquireError, RedisLockerReleaseError } from '../error.js';
+import {
+	RedisXLockerAcquireError,
+	RedisXLockerReleaseError,
+} from '../error.js';
 import { getScripts, type Scripts } from '../scripts.js';
 import {
 	asyncTimeout,
@@ -10,7 +13,7 @@ import {
 	validateRetryOptions,
 } from '../utils.js';
 
-export class RedisMultiLocker {
+export class RedisXMultiLocker {
 	#ttl: number;
 	#retry_interval: number;
 	#retry_count: number;
@@ -61,7 +64,7 @@ export class RedisMultiLocker {
 	async lock(
 		ids: (string | number)[] | Set<string | number>,
 		ttl: number = this.#ttl,
-	): Promise<RedisMultiLock> {
+	): Promise<RedisXMultiLock> {
 		validateDuration(ttl);
 		const id_set = new Set(Array.from(ids, String));
 		if (id_set.size === 0 || id_set.size > 100) {
@@ -83,7 +86,7 @@ export class RedisMultiLocker {
 			);
 
 			if (result === 1) {
-				return new RedisMultiLock(this, token, lock_ids);
+				return new RedisXMultiLock(this, token, lock_ids);
 			}
 
 			if (try_id + 1 < this.#retry_count) {
@@ -92,21 +95,25 @@ export class RedisMultiLocker {
 			}
 		}
 
-		throw new RedisLockerAcquireError();
+		throw new RedisXLockerAcquireError();
 	}
 }
 
-export class RedisMultiLock {
-	#locker: RedisMultiLocker;
+export class RedisXMultiLock {
+	#locker: RedisXMultiLocker;
 	#token: string;
 	#ids: string[];
 
 	/**
-	 * @param locker RedisMultiLocker instance.
+	 * @param locker RedisXMultiLocker instance.
 	 * @param token Lock token.
 	 * @param ids Normalized resource IDs acquired with this token.
 	 */
-	constructor(locker: RedisMultiLocker, token: string, ids: readonly string[]) {
+	constructor(
+		locker: RedisXMultiLocker,
+		token: string,
+		ids: readonly string[],
+	) {
 		this.#locker = locker;
 		this.#token = token;
 		this.#ids = [...ids];
@@ -128,7 +135,7 @@ export class RedisMultiLock {
 		);
 
 		if (result === 0) {
-			throw new RedisLockerAcquireError();
+			throw new RedisXLockerAcquireError();
 		}
 	}
 
@@ -145,7 +152,7 @@ export class RedisMultiLock {
 		);
 
 		if (result === 0 && !is_silent) {
-			throw new RedisLockerReleaseError();
+			throw new RedisXLockerReleaseError();
 		}
 	}
 }

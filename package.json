@@ -1,6 +1,6 @@
 {
 	"name": "@redis-x/locker",
-	"version": "0.2.3",
+	"version": "0.3.0",
 	"description": "Distributed locking library for Redis.",
 	"publishConfig": {
 		"access": "public"

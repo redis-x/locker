@@ -1,16 +1,16 @@
 import { expect, test } from 'vitest';
 import { redisClient } from '../../test/redis.js';
 import {
-	RedisLock,
-	RedisLocker,
-	RedisLockerAcquireError,
-	RedisLockerReleaseError,
+	RedisXLock,
+	RedisXLocker,
+	RedisXLockerAcquireError,
+	RedisXLockerReleaseError,
 } from '../main.js';
 import { asyncTimeout } from '../utils.js';
 
 const TIMEOUT = 200;
 
-const locker = new RedisLocker(redisClient, 'test', {
+const locker = new RedisXLocker(redisClient, 'test', {
 	ttl: TIMEOUT,
 	retry_interval: 0,
 	retry_count: 1,
@@ -18,21 +18,21 @@ const locker = new RedisLocker(redisClient, 'test', {
 
 test('successful lock', async () => {
 	const lock = await locker.lock();
-	expect(lock).toBeInstanceOf(RedisLock);
+	expect(lock).toBeInstanceOf(RedisXLock);
 });
 
 // try to lock again, should fail
 test('failed lock', async () => {
 	const lock_promise = locker.lock();
-	await expect(lock_promise).rejects.toThrow(RedisLockerAcquireError);
+	await expect(lock_promise).rejects.toThrow(RedisXLockerAcquireError);
 });
 
-let lock_global: RedisLock;
+let lock_global: RedisXLock;
 test('successful unlock after timeout', async () => {
 	await asyncTimeout(TIMEOUT);
 
 	lock_global = await locker.lock();
-	expect(lock_global).toBeInstanceOf(RedisLock);
+	expect(lock_global).toBeInstanceOf(RedisXLock);
 });
 
 test('lock release', async () => {
@@ -41,39 +41,39 @@ test('lock release', async () => {
 
 test('successful lock after release', async () => {
 	const lock = await locker.lock();
-	expect(lock).toBeInstanceOf(RedisLock);
+	expect(lock).toBeInstanceOf(RedisXLock);
 });
 
 test('lock release but with invalid lock token', async () => {
 	const promise = lock_global.release();
-	await expect(promise).rejects.toThrow(RedisLockerReleaseError);
+	await expect(promise).rejects.toThrow(RedisXLockerReleaseError);
 });
 
 test('lock extend', async () => {
 	await redisClient.FLUSHDB();
 
 	const lock = await locker.lock();
-	expect(lock).toBeInstanceOf(RedisLock);
+	expect(lock).toBeInstanceOf(RedisXLock);
 
 	await asyncTimeout(TIMEOUT * 0.5);
 
 	const promise_lock_2 = locker.lock();
-	await expect(promise_lock_2).rejects.toThrow(RedisLockerAcquireError);
+	await expect(promise_lock_2).rejects.toThrow(RedisXLockerAcquireError);
 
 	await lock.extend(TIMEOUT);
 
 	await asyncTimeout(TIMEOUT);
 
 	const promise_lock_3 = locker.lock();
-	await expect(promise_lock_3).rejects.toThrow(RedisLockerAcquireError);
+	await expect(promise_lock_3).rejects.toThrow(RedisXLockerAcquireError);
 
 	await asyncTimeout(TIMEOUT * 0.5);
 
 	const promise_lock_4 = locker.lock();
-	await expect(promise_lock_4).resolves.toBeInstanceOf(RedisLock);
+	await expect(promise_lock_4).resolves.toBeInstanceOf(RedisXLock);
 });
 
-const silent_locker = new RedisLocker(redisClient, 'test-silent', {
+const silent_locker = new RedisXLocker(redisClient, 'test-silent', {
 	ttl: TIMEOUT,
 	retry_interval: 0,
 	retry_count: 1,
@@ -84,7 +84,7 @@ test('silent release frees a held lock', async () => {
 	await lock.release(true);
 
 	const next = await silent_locker.lock();
-	expect(next).toBeInstanceOf(RedisLock);
+	expect(next).toBeInstanceOf(RedisXLock);
 	await next.release();
 });
 
@@ -101,6 +101,6 @@ test("silent release of an expired lock keeps the successor's lock", async () =>
 	const current = await silent_locker.lock();
 
 	await expect(stale.release(true)).resolves.toBeUndefined();
-	await expect(silent_locker.lock()).rejects.toThrow(RedisLockerAcquireError);
+	await expect(silent_locker.lock()).rejects.toThrow(RedisXLockerAcquireError);
 	await current.release();
 });

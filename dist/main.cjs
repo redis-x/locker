@@ -2,12 +2,12 @@ Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 let node_crypto = require("node:crypto");
 let _redis_x_client = require("@redis-x/client");
 //#region src/error.ts
-var RedisLockerAcquireError = class extends Error {
+var RedisXLockerAcquireError = class extends Error {
 	constructor() {
 		super("Failed to acquire lock");
 	}
 };
-var RedisLockerReleaseError = class extends Error {
+var RedisXLockerReleaseError = class extends Error {
 	constructor() {
 		super("Failed to release lock");
 	}
@@ -83,7 +83,7 @@ function asyncTimeout(ms) {
 }
 //#endregion
 //#region src/locker/multi.ts
-var RedisMultiLocker = class {
+var RedisXMultiLocker = class {
 	#ttl;
 	#retry_interval;
 	#retry_count;
@@ -123,18 +123,18 @@ var RedisMultiLocker = class {
 		const lock_ids = [...id_set];
 		const token = (0, node_crypto.randomBytes)(16).toString("base64");
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
-			if (await this._scripts.multi_lock.executeWithKeys([this._redis_key], token, String(ttl), ...lock_ids) === 1) return new RedisMultiLock(this, token, lock_ids);
+			if (await this._scripts.multi_lock.executeWithKeys([this._redis_key], token, String(ttl), ...lock_ids) === 1) return new RedisXMultiLock(this, token, lock_ids);
 			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
-		throw new RedisLockerAcquireError();
+		throw new RedisXLockerAcquireError();
 	}
 };
-var RedisMultiLock = class {
+var RedisXMultiLock = class {
 	#locker;
 	#token;
 	#ids;
 	/**
-	* @param locker RedisMultiLocker instance.
+	* @param locker RedisXMultiLocker instance.
 	* @param token Lock token.
 	* @param ids Normalized resource IDs acquired with this token.
 	*/
@@ -151,7 +151,7 @@ var RedisMultiLock = class {
 	*/
 	async extend(time) {
 		validateDuration(time);
-		if (await this.#locker._scripts.multi_extend.executeWithKeys([this.#locker._redis_key], this.#token, String(time), ...this.#ids) === 0) throw new RedisLockerAcquireError();
+		if (await this.#locker._scripts.multi_extend.executeWithKeys([this.#locker._redis_key], this.#token, String(time), ...this.#ids) === 0) throw new RedisXLockerAcquireError();
 	}
 	/**
 	* Releases lock.
@@ -159,12 +159,12 @@ var RedisMultiLock = class {
 	* @returns -
 	*/
 	async release(is_silent = false) {
-		if (await this.#locker._scripts.multi_release.executeWithKeys([this.#locker._redis_key], this.#token, ...this.#ids) === 0 && !is_silent) throw new RedisLockerReleaseError();
+		if (await this.#locker._scripts.multi_release.executeWithKeys([this.#locker._redis_key], this.#token, ...this.#ids) === 0 && !is_silent) throw new RedisXLockerReleaseError();
 	}
 };
 //#endregion
 //#region src/locker/single.ts
-var RedisLocker = class {
+var RedisXLocker = class {
 	#ttl;
 	#retry_interval;
 	#retry_count;
@@ -206,17 +206,17 @@ var RedisLocker = class {
 			if (await this._redisXClient.SET(this._redis_key, token, {
 				NX: true,
 				PX: ttl
-			}) === "OK") return new RedisLock(this, token);
+			}) === "OK") return new RedisXLock(this, token);
 			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
-		throw new RedisLockerAcquireError();
+		throw new RedisXLockerAcquireError();
 	}
 };
-var RedisLock = class {
+var RedisXLock = class {
 	#locker;
 	#token;
 	/**
-	* @param locker RedisLocker instance.
+	* @param locker RedisXLocker instance.
 	* @param token Lock token.
 	*/
 	constructor(locker, token) {
@@ -231,7 +231,7 @@ var RedisLock = class {
 	*/
 	async extend(time) {
 		validateDuration(time);
-		if (await this.#locker._scripts.single_extend.executeWithKeys([this.#locker._redis_key], this.#token, String(time)) === 0) throw new RedisLockerAcquireError();
+		if (await this.#locker._scripts.single_extend.executeWithKeys([this.#locker._redis_key], this.#token, String(time)) === 0) throw new RedisXLockerAcquireError();
 	}
 	/**
 	* Releases lock.
@@ -239,13 +239,13 @@ var RedisLock = class {
 	* @returns -
 	*/
 	async release(is_silent = false) {
-		if (await this.#locker._scripts.single_release.executeWithKeys([this.#locker._redis_key], this.#token) === 0 && !is_silent) throw new RedisLockerReleaseError();
+		if (await this.#locker._scripts.single_release.executeWithKeys([this.#locker._redis_key], this.#token) === 0 && !is_silent) throw new RedisXLockerReleaseError();
 	}
 };
 //#endregion
-exports.RedisLock = RedisLock;
-exports.RedisLocker = RedisLocker;
-exports.RedisLockerAcquireError = RedisLockerAcquireError;
-exports.RedisLockerReleaseError = RedisLockerReleaseError;
-exports.RedisMultiLock = RedisMultiLock;
-exports.RedisMultiLocker = RedisMultiLocker;
+exports.RedisXLock = RedisXLock;
+exports.RedisXLocker = RedisXLocker;
+exports.RedisXLockerAcquireError = RedisXLockerAcquireError;
+exports.RedisXLockerReleaseError = RedisXLockerReleaseError;
+exports.RedisXMultiLock = RedisXMultiLock;
+exports.RedisXMultiLocker = RedisXMultiLocker;

@@ -1,12 +1,12 @@
 export {
-	RedisLockerAcquireError,
-	RedisLockerReleaseError,
+	RedisXLockerAcquireError,
+	RedisXLockerReleaseError,
 } from './error.js';
 export {
-	RedisMultiLock,
-	RedisMultiLocker,
+	RedisXMultiLock,
+	RedisXMultiLocker,
 } from './locker/multi.js';
 export {
-	RedisLock,
-	RedisLocker,
+	RedisXLock,
+	RedisXLocker,
 } from './locker/single.js';

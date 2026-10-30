@@ -1,10 +1,10 @@
 import { RedisXClient } from "@redis-x/client";
 import { RedisClientType, RedisFunctions, RedisModules, RedisScripts } from "redis";
 //#region src/error.d.ts
-export declare class RedisLockerAcquireError extends Error {
+export declare class RedisXLockerAcquireError extends Error {
   constructor();
 }
-export declare class RedisLockerReleaseError extends Error {
+export declare class RedisXLockerReleaseError extends Error {
   constructor();
 }
 //#endregion
@@ -12,7 +12,7 @@ export declare class RedisLockerReleaseError extends Error {
 type RedisClient = RedisClientType<RedisModules, RedisFunctions, RedisScripts>;
 //#endregion
 //#region src/locker/multi.d.ts
-export declare class RedisMultiLocker {
+export declare class RedisXMultiLocker {
   #private;
   /**
    * Creates a multi-resource locker. Requires Redis server 7.4 or newer.
@@ -35,16 +35,16 @@ export declare class RedisMultiLocker {
    * @returns Lock object.
    * @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
    */
-  lock(ids: (string | number)[] | Set<string | number>, ttl?: number): Promise<RedisMultiLock>;
+  lock(ids: (string | number)[] | Set<string | number>, ttl?: number): Promise<RedisXMultiLock>;
 }
-export declare class RedisMultiLock {
+export declare class RedisXMultiLock {
   #private;
   /**
-   * @param locker RedisMultiLocker instance.
+   * @param locker RedisXMultiLocker instance.
    * @param token Lock token.
    * @param ids Normalized resource IDs acquired with this token.
    */
-  constructor(locker: RedisMultiLocker, token: string, ids: readonly string[]);
+  constructor(locker: RedisXMultiLocker, token: string, ids: readonly string[]);
   /**
    * Extends lock time.
    * @param time - Time to extend in milliseconds; a positive safe integer.
@@ -61,7 +61,7 @@ export declare class RedisMultiLock {
 }
 //#endregion
 //#region src/locker/single.d.ts
-export declare class RedisLocker {
+export declare class RedisXLocker {
   #private;
   /**
    * @param redisClient Client from the `redis` package or a RedisX client.
@@ -83,15 +83,15 @@ export declare class RedisLocker {
    * @returns Lock object.
    * @throws {RangeError} If the TTL is not a positive safe integer.
    */
-  lock(ttl?: number): Promise<RedisLock>;
+  lock(ttl?: number): Promise<RedisXLock>;
 }
-export declare class RedisLock {
+export declare class RedisXLock {
   #private;
   /**
-   * @param locker RedisLocker instance.
+   * @param locker RedisXLocker instance.
    * @param token Lock token.
    */
-  constructor(locker: RedisLocker, token: string);
+  constructor(locker: RedisXLocker, token: string);
   /**
    * Extends lock time.
    * @param time Time to extend in milliseconds; a positive safe integer.

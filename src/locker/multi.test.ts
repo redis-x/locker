@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { redisClient, redisXClient } from '../../test/redis.js';
 import {
-	RedisLockerAcquireError,
-	RedisLockerReleaseError,
-	RedisMultiLocker,
+	RedisXLockerAcquireError,
+	RedisXLockerReleaseError,
+	RedisXMultiLocker,
 } from '../main.js';
 import { asyncTimeout } from '../utils.js';
 
@@ -17,9 +17,9 @@ const keys = new Set<string>();
  */
 function createLocker(
 	name: string,
-	options?: ConstructorParameters<typeof RedisMultiLocker>[2],
-): RedisMultiLocker {
-	const locker = new RedisMultiLocker(redisXClient, `test-multi-${name}`, {
+	options?: ConstructorParameters<typeof RedisXMultiLocker>[2],
+): RedisXMultiLocker {
+	const locker = new RedisXMultiLocker(redisXClient, `test-multi-${name}`, {
 		retry_count: 1,
 		...options,
 	});
@@ -34,7 +34,7 @@ function createLocker(
  * @returns Remaining milliseconds for each resource.
  */
 function remainingTtls(
-	locker: RedisMultiLocker,
+	locker: RedisXMultiLocker,
 	ids: string[],
 ): Promise<number[]> {
 	return redisClient.sendCommand([
@@ -75,7 +75,7 @@ test.each(['array', 'set'])(
 		await original.release();
 		const next = await locker.lock(['1', 'two']);
 		await expect(locker.lock(['replacement'])).rejects.toThrow(
-			RedisLockerAcquireError,
+			RedisXLockerAcquireError,
 		);
 		await next.release();
 		await replacement.release();
@@ -86,8 +86,8 @@ test('conflicting batches leave both the owner and free IDs unchanged', async ()
 	const locker = createLocker('conflict');
 	const owner = await locker.lock([1, 2]);
 
-	await expect(locker.lock([1, 2])).rejects.toThrow(RedisLockerAcquireError);
-	await expect(locker.lock([3, 2])).rejects.toThrow(RedisLockerAcquireError);
+	await expect(locker.lock([1, 2])).rejects.toThrow(RedisXLockerAcquireError);
+	await expect(locker.lock([3, 2])).rejects.toThrow(RedisXLockerAcquireError);
 	const disjoint = await locker.lock([3, 4]);
 	await owner.extend(1000);
 	await owner.release();
@@ -100,7 +100,7 @@ test('released IDs can be reacquired and the old handle cannot release again', a
 	await original.release();
 	const current = await locker.lock([1, 2]);
 
-	await expect(original.release()).rejects.toThrow(RedisLockerReleaseError);
+	await expect(original.release()).rejects.toThrow(RedisXLockerReleaseError);
 	await current.release();
 });
 
@@ -120,7 +120,7 @@ test('only one of two concurrent overlapping batches acquires a lock', async () 
 			if (result.status === 'fulfilled') {
 				await result.value.release();
 			} else {
-				expect(result.reason).toBeInstanceOf(RedisLockerAcquireError);
+				expect(result.reason).toBeInstanceOf(RedisXLockerAcquireError);
 			}
 		}),
 	);
@@ -155,7 +155,7 @@ test('client clock changes cannot steal another lock', async () => {
 	const owner = await locker.lock(['id']);
 	clock.mockReturnValue(8_000_000_000_000_000);
 
-	await expect(locker.lock(['id'])).rejects.toThrow(RedisLockerAcquireError);
+	await expect(locker.lock(['id'])).rejects.toThrow(RedisXLockerAcquireError);
 	await owner.extend(1000);
 	await owner.release();
 });
@@ -201,8 +201,8 @@ test("expired handles cannot extend or release a successor's lock", async () => 
 	const current = await locker.lock(['one', 'two']);
 	const before = await remainingTtls(locker, ['one', 'two']);
 
-	await expect(stale.extend(1000)).rejects.toThrow(RedisLockerAcquireError);
-	await expect(stale.release()).rejects.toThrow(RedisLockerReleaseError);
+	await expect(stale.extend(1000)).rejects.toThrow(RedisXLockerAcquireError);
+	await expect(stale.release()).rejects.toThrow(RedisXLockerReleaseError);
 	const after = await remainingTtls(locker, ['one', 'two']);
 	expect(after[0]).toBeGreaterThan(0);
 	expect(after[0]).toBeLessThanOrEqual(before[0]);
@@ -222,8 +222,8 @@ test.each(['missing', 'replaced'])(
 
 		const before = await remainingTtls(locker, ['one']);
 
-		await expect(old.extend(1000)).rejects.toThrow(RedisLockerAcquireError);
-		await expect(old.release()).rejects.toThrow(RedisLockerReleaseError);
+		await expect(old.extend(1000)).rejects.toThrow(RedisXLockerAcquireError);
+		await expect(old.release()).rejects.toThrow(RedisXLockerReleaseError);
 		const after = await remainingTtls(locker, ['one']);
 		expect(after[0]).toBeGreaterThan(0);
 		expect(after[0]).toBeLessThanOrEqual(before[0]);
@@ -238,7 +238,7 @@ test('silent release frees held IDs and ignores a released handle', async () => 
 	const current = await locker.lock([1, 2]);
 
 	await expect(original.release(true)).resolves.toBeUndefined();
-	await expect(locker.lock([1])).rejects.toThrow(RedisLockerAcquireError);
+	await expect(locker.lock([1])).rejects.toThrow(RedisXLockerAcquireError);
 	await current.release();
 });
 
@@ -266,7 +266,7 @@ test('silent release of a partially lost batch keeps the remaining IDs locked', 
 	await expect(old.release(true)).resolves.toBeUndefined();
 	const [remaining] = await remainingTtls(locker, ['one']);
 	expect(remaining).toBeGreaterThan(0);
-	await expect(locker.lock(['one'])).rejects.toThrow(RedisLockerAcquireError);
+	await expect(locker.lock(['one'])).rejects.toThrow(RedisXLockerAcquireError);
 });
 
 test('extension adds to the remaining TTL without affecting other owners', async () => {
@@ -298,7 +298,7 @@ test('expiration errors leave requested IDs available and existing locks intact'
 	).rejects.toThrow('invalid expire time');
 	const recovered = await locker.lock(['one', 'two']);
 	await expect(locker.lock(['existing'])).rejects.toThrow(
-		RedisLockerAcquireError,
+		RedisXLockerAcquireError,
 	);
 	const before = await remainingTtls(locker, ['existing']);
 	await expect(owner.extend(Number.MAX_SAFE_INTEGER)).rejects.toThrow(
@@ -320,7 +320,7 @@ test.each(['array', 'set'])(
 
 		await lock.extend(1000);
 		await expect(batch_locker.lock([99, 100])).rejects.toThrow(
-			RedisLockerAcquireError,
+			RedisXLockerAcquireError,
 		);
 		const disjoint = await batch_locker.lock([100]);
 		await disjoint.release();
@@ -336,7 +336,7 @@ test('accepts an array of more than 100 duplicate IDs', async () => {
 	const lock = await batch_locker.lock(Array.from({ length: 150 }, () => 'id'));
 	await lock.extend(1000);
 	await expect(batch_locker.lock(['id'])).rejects.toThrow(
-		RedisLockerAcquireError,
+		RedisXLockerAcquireError,
 	);
 	await lock.release();
 

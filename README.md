@@ -50,10 +50,10 @@ Lockers accept either a plain `redis` client or a `RedisXClient` from [`@redis-x
 When you need to lock a single resource (like a user account during update).
 
 ```typescript
-import { RedisLocker } from '@redis-x/locker';
+import { RedisXLocker } from '@redis-x/locker';
 
 // Create a locker for a specific resource
-const locker = new RedisLocker(redisClient, 'user:123', {
+const locker = new RedisXLocker(redisClient, 'user:123', {
   ttl: 5000,            // Lock expires after 5 seconds
   retry_interval: 100,  // Wait 100ms between retry attempts
   retry_count: 5        // Try 5 times before giving up
@@ -75,7 +75,7 @@ try {
 
 ### Options
 
-Both `RedisLocker` and `RedisMultiLocker` accept the same options:
+Both `RedisXLocker` and `RedisXMultiLocker` accept the same options:
 
 | Option           | Default | Description                                                     |
 | ---------------- | ------: | --------------------------------------------------------------- |
@@ -92,10 +92,10 @@ For operations that require multiple resources to be locked simultaneously (like
 `lock(ids)` accepts an array or `Set` of **1–100 unique IDs**. Numbers are converted to strings, so `1` and `'1'` are the same ID.
 
 ```typescript
-import { RedisMultiLocker } from '@redis-x/locker';
+import { RedisXMultiLocker } from '@redis-x/locker';
 
 // Create a multi-locker with a namespace
-const multiLocker = new RedisMultiLocker(redisClient, 'banking');
+const multiLocker = new RedisXMultiLocker(redisClient, 'banking');
 
 let lock;
 try {
@@ -153,21 +153,21 @@ try {
 
 ### Handling Lock Errors
 
-- `RedisLockerAcquireError` is thrown by `lock()` when every attempt failed because the resource is locked, and by `extend()` when the lock has expired or belongs to someone else.
-- `RedisLockerReleaseError` is thrown by `release()` when the lock has expired or belongs to someone else. Call `release(true)` to skip it: a lock that belongs to someone else stays untouched either way.
+- `RedisXLockerAcquireError` is thrown by `lock()` when every attempt failed because the resource is locked, and by `extend()` when the lock has expired or belongs to someone else.
+- `RedisXLockerReleaseError` is thrown by `release()` when the lock has expired or belongs to someone else. Call `release(true)` to skip it: a lock that belongs to someone else stays untouched either way.
 - `RangeError` is thrown for an invalid TTL, retry option or number of IDs, before anything is sent to Redis.
 
 ```typescript
-import { RedisLockerAcquireError } from '@redis-x/locker';
+import { RedisXLockerAcquireError } from '@redis-x/locker';
 
 try {
   const lock = await locker.lock();
   // ...
 } catch (error) {
-  if (error instanceof RedisLockerAcquireError) {
+  if (error instanceof RedisXLockerAcquireError) {
     console.log('Resource is currently locked by another process');
   }
 }
 ```
 
-You can ignore `RedisLockerReleaseError` by calling `lock?.release(true)`. However, if you encounter `RedisLockerReleaseError`, it means the lock has expired before task completion. You should consider setting lock lifetime to a longer duration to avoid issues.
+You can ignore `RedisXLockerReleaseError` by calling `lock?.release(true)`. However, if you encounter `RedisXLockerReleaseError`, it means the lock has expired before task completion. You should consider setting lock lifetime to a longer duration to avoid issues.

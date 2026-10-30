@@ -1,10 +1,10 @@
-export class RedisLockerAcquireError extends Error {
+export class RedisXLockerAcquireError extends Error {
 	constructor() {
 		super('Failed to acquire lock');
 	}
 }
 
-export class RedisLockerReleaseError extends Error {
+export class RedisXLockerReleaseError extends Error {
 	constructor() {
 		super('Failed to release lock');
 	}
