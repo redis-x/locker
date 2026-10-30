@@ -1,6 +1,6 @@
 {
 	"name": "@redis-x/locker",
-	"version": "0.2.3",
+	"version": "0.3.0",
 	"description": "Distributed locking library for Redis.",
 	"publishConfig": {
 		"access": "public"
@@ -52,7 +52,16 @@
 		"type": "git",
 		"url": "git+https://github.com/redis-x/locker.git"
 	},
-	"keywords": [],
+	"keywords": [
+		"redis",
+		"redis-x",
+		"lock",
+		"locking",
+		"mutex",
+		"distributed-lock",
+		"concurrency",
+		"typescript"
+	],
 	"author": "Daniil Kirichenko (https://twitter.com/kirickme)",
 	"license": "MIT",
 	"bugs": {

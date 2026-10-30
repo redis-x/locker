@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { getRedisXClient, type RedisXClient } from '@redis-x/client';
-import { RedisLockerAcquireError, RedisLockerReleaseError } from '../error.js';
+import {
+	RedisXLockerAcquireError,
+	RedisXLockerReleaseError,
+} from '../error.js';
 import { getScripts, type Scripts } from '../scripts.js';
 import {
 	asyncTimeout,
@@ -10,7 +13,7 @@ import {
 	validateRetryOptions,
 } from '../utils.js';
 
-export class RedisLocker {
+export class RedisXLocker {
 	#ttl: number;
 	#retry_interval: number;
 	#retry_count: number;
@@ -61,7 +64,7 @@ export class RedisLocker {
 	 * @returns Lock object.
 	 * @throws {RangeError} If the TTL is not a positive safe integer.
 	 */
-	async lock(ttl: number = this.#ttl): Promise<RedisLock> {
+	async lock(ttl: number = this.#ttl): Promise<RedisXLock> {
 		validateDuration(ttl);
 		const token = randomBytes(16).toString('base64');
 
@@ -73,7 +76,7 @@ export class RedisLocker {
 			});
 
 			if (result === 'OK') {
-				return new RedisLock(this, token);
+				return new RedisXLock(this, token);
 			}
 
 			if (try_id + 1 < this.#retry_count) {
@@ -82,19 +85,19 @@ export class RedisLocker {
 			}
 		}
 
-		throw new RedisLockerAcquireError();
+		throw new RedisXLockerAcquireError();
 	}
 }
 
-export class RedisLock {
-	#locker: RedisLocker;
+export class RedisXLock {
+	#locker: RedisXLocker;
 	#token: string;
 
 	/**
-	 * @param locker RedisLocker instance.
+	 * @param locker RedisXLocker instance.
 	 * @param token Lock token.
 	 */
-	constructor(locker: RedisLocker, token: string) {
+	constructor(locker: RedisXLocker, token: string) {
 		this.#locker = locker;
 		this.#token = token;
 	}
@@ -114,7 +117,7 @@ export class RedisLock {
 		);
 
 		if (result === 0) {
-			throw new RedisLockerAcquireError();
+			throw new RedisXLockerAcquireError();
 		}
 	}
 
@@ -130,7 +133,7 @@ export class RedisLock {
 		);
 
 		if (result === 0 && !is_silent) {
-			throw new RedisLockerReleaseError();
+			throw new RedisXLockerReleaseError();
 		}
 	}
 }

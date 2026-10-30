@@ -2,11 +2,11 @@ import { getRedisXClient, RedisXClient } from '@redis-x/client';
 import { createClient } from 'redis';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
-	type RedisLock,
-	RedisLocker,
-	RedisLockerAcquireError,
-	type RedisMultiLock,
-	RedisMultiLocker,
+	type RedisXLock,
+	RedisXLocker,
+	RedisXLockerAcquireError,
+	type RedisXMultiLock,
+	RedisXMultiLocker,
 } from '../main.js';
 
 /**
@@ -57,17 +57,17 @@ function lockCommands(
  * @returns Lock object.
  */
 function acquire(
-	locker: RedisLocker | RedisMultiLocker,
+	locker: RedisXLocker | RedisXMultiLocker,
 	ttl?: number,
-): Promise<RedisLock | RedisMultiLock> {
-	return locker instanceof RedisLocker
+): Promise<RedisXLock | RedisXMultiLock> {
+	return locker instanceof RedisXLocker
 		? locker.lock(ttl)
 		: locker.lock(['id'], ttl);
 }
 
 const LOCKERS = [
-	['single', RedisLocker],
-	['multi', RedisMultiLocker],
+	['single', RedisXLocker],
+	['multi', RedisXMultiLocker],
 ] as const;
 
 afterEach(() => {
@@ -125,7 +125,7 @@ describe.each(LOCKERS)('%s locker options', (_, Locker) => {
 				retry_interval: 0,
 			});
 
-			await expect(acquire(locker)).rejects.toThrow(RedisLockerAcquireError);
+			await expect(acquire(locker)).rejects.toThrow(RedisXLockerAcquireError);
 			expect(lockCommands(sendCommand)).toHaveLength(retry_count);
 			expect(timeout).toHaveBeenCalledTimes(retry_count - 1);
 		},
@@ -230,7 +230,7 @@ describe('multi-lock batch limits', () => {
 		'rejects arrays and Sets of %s IDs before Redis commands',
 		async (count) => {
 			const { client, sendCommand } = createMockClient();
-			const locker = new RedisMultiLocker(client, 'batch');
+			const locker = new RedisXMultiLocker(client, 'batch');
 			const ids = Array.from({ length: count }, (_, index) => index);
 
 			await expect(locker.lock(ids)).rejects.toThrow(RangeError);
@@ -241,7 +241,7 @@ describe('multi-lock batch limits', () => {
 
 	test('counts unique IDs after converting them to strings', async () => {
 		const { client, sendCommand } = createMockClient();
-		const locker = new RedisMultiLocker(client, 'batch');
+		const locker = new RedisXMultiLocker(client, 'batch');
 		const ids = Array.from({ length: 100 }, (_, index) => index);
 
 		await locker.lock([...ids, ...ids.map(String)]);
