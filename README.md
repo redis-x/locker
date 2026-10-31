@@ -89,7 +89,7 @@ Invalid values throw a `RangeError`.
 
 For operations that require multiple resources to be locked simultaneously (like transferring money between accounts). Either all IDs are locked or none: if any of them is already locked, the attempt fails and is retried.
 
-`lock(ids)` accepts an array or `Set` of **1–100 unique IDs**. Numbers are converted to strings, so `1` and `'1'` are the same ID.
+`lock(ids)` accepts an array or `Set` with **at least one unique ID**. There is no fixed upper limit; the practical one depends on your runtime. Numbers are converted to strings, so `1` and `'1'` are the same ID.
 
 ```typescript
 import { RedisXMultiLocker } from '@redis-x/locker';

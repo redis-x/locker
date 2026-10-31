@@ -13,13 +13,13 @@ var RedisXLockerReleaseError = class extends Error {
 };
 //#endregion
 //#region src/lua/multi-extend.lua
-var multi_extend_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2]: extension in milliseconds, ARGV[3...]: IDs\nlocal ids = { unpack(ARGV, 3) }\nlocal tokens = redis.call('HMGET', KEYS[1], unpack(ids))\nfor _, token in ipairs(tokens) do\n	if token ~= ARGV[1] then\n		return 0\n	end\nend\n\nlocal ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))\nlocal remaining_ms = math.huge\nfor _, ttl in ipairs(ttls) do\n	if ttl <= 0 then\n		return 0\n	end\n	remaining_ms = math.min(remaining_ms, ttl)\nend\nredis.call('HPEXPIRE', KEYS[1], remaining_ms + tonumber(ARGV[2]), 'FIELDS', #ids, unpack(ids))\n\nreturn 1\n";
+var multi_extend_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2]: extension in milliseconds, ARGV[3...]: IDs\n\n-- unpack() can't spread more than ~8000 values, so commands get IDs in packs.\nlocal id_packs = {}\nfor index = 3, #ARGV, 1000 do\n	table.insert(id_packs, { unpack(ARGV, index, math.min(index + 999, #ARGV)) })\nend\n\nlocal remaining_ms = math.huge\nfor _, ids in ipairs(id_packs) do\n	local tokens = redis.call('HMGET', KEYS[1], unpack(ids))\n	for _, token in ipairs(tokens) do\n		if token ~= ARGV[1] then\n			return 0\n		end\n	end\n\n	local ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))\n	for _, ttl in ipairs(ttls) do\n		if ttl <= 0 then\n			return 0\n		end\n		remaining_ms = math.min(remaining_ms, ttl)\n	end\nend\n\nfor _, ids in ipairs(id_packs) do\n	redis.call('HPEXPIRE', KEYS[1], remaining_ms + tonumber(ARGV[2]), 'FIELDS', #ids, unpack(ids))\nend\n\nreturn 1\n";
 //#endregion
 //#region src/lua/multi-lock.lua
-var multi_lock_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2]: TTL in milliseconds, ARGV[3...]: IDs\n-- Redis 8+: HSETEX with FNX and PX can replace this script.\nlocal ids = { unpack(ARGV, 3) }\n-- Read before writing so Redis versions without field TTLs fail safely.\nlocal ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))\nfor _, ttl in ipairs(ttls) do\n	if ttl ~= -2 then\n		return 0\n	end\nend\n\nlocal fields = {}\nfor _, id in ipairs(ids) do\n	table.insert(fields, id)\n	table.insert(fields, ARGV[1])\nend\nredis.call('HSET', KEYS[1], unpack(fields))\n\nlocal result = redis.pcall('HPEXPIRE', KEYS[1], ARGV[2], 'FIELDS', #ids, unpack(ids))\nif result.err then\n	-- Lua errors do not roll back writes. Remove only our new fields.\n	redis.call('HDEL', KEYS[1], unpack(ids))\n	return result\nend\n\nreturn 1\n";
+var multi_lock_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2]: TTL in milliseconds, ARGV[3...]: IDs\n\n-- Redis 8+: HSETEX with FNX and PX can replace this script.\n\n-- unpack() can't spread more than ~8000 values, so commands get IDs in packs.\nlocal id_packs = {}\nfor index = 3, #ARGV, 1000 do\n	table.insert(id_packs, { unpack(ARGV, index, math.min(index + 999, #ARGV)) })\nend\n\n-- Read before writing so Redis versions without field TTLs fail safely.\nfor _, ids in ipairs(id_packs) do\n	local ttls = redis.call('HPTTL', KEYS[1], 'FIELDS', #ids, unpack(ids))\n	for _, ttl in ipairs(ttls) do\n		if ttl ~= -2 then\n			return 0\n		end\n	end\nend\n\nfor _, ids in ipairs(id_packs) do\n	local fields = {}\n	for _, id in ipairs(ids) do\n		table.insert(fields, id)\n		table.insert(fields, ARGV[1])\n	end\n	redis.call('HSET', KEYS[1], unpack(fields))\n\n	local result = redis.pcall('HPEXPIRE', KEYS[1], ARGV[2], 'FIELDS', #ids, unpack(ids))\n	if result.err then\n		-- Lua errors do not roll back writes. All IDs were checked as free, so this removes only our new fields.\n		for _, written_ids in ipairs(id_packs) do\n			redis.call('HDEL', KEYS[1], unpack(written_ids))\n		end\n		return result\n	end\nend\n\nreturn 1\n";
 //#endregion
 //#region src/lua/multi-release.lua
-var multi_release_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2...]: IDs\nlocal ids = { unpack(ARGV, 2) }\nlocal tokens = redis.call('HMGET', KEYS[1], unpack(ids))\nfor _, token in ipairs(tokens) do\n	if token ~= ARGV[1] then\n		return 0\n	end\nend\n\nredis.call('HDEL', KEYS[1], unpack(ids))\n\nreturn 1\n";
+var multi_release_default = "-- KEYS[1]: namespace hash\n-- ARGV[1]: lock token, ARGV[2...]: IDs\n\n-- unpack() can't spread more than ~8000 values, so commands get IDs in packs.\nlocal id_packs = {}\nfor index = 2, #ARGV, 1000 do\n	table.insert(id_packs, { unpack(ARGV, index, math.min(index + 999, #ARGV)) })\nend\n\nfor _, ids in ipairs(id_packs) do\n	local tokens = redis.call('HMGET', KEYS[1], unpack(ids))\n	for _, token in ipairs(tokens) do\n		if token ~= ARGV[1] then\n			return 0\n		end\n	end\nend\n\nfor _, ids in ipairs(id_packs) do\n	redis.call('HDEL', KEYS[1], unpack(ids))\nend\n\nreturn 1\n";
 //#endregion
 //#region src/lua/single-extend.lua
 var single_extend_default = "-- KEYS[1]: lock key\n-- ARGV[1]: lock token, ARGV[2]: extension in milliseconds\nlocal pttl = redis.call('PTTL', KEYS[1])\nif pttl > 0 and redis.call('GET', KEYS[1]) == ARGV[1] then\n	return redis.call('PEXPIRE', KEYS[1], pttl + tonumber(ARGV[2]))\nend\n\nreturn 0\n";
@@ -110,19 +110,18 @@ var RedisXMultiLocker = class {
 		this._redis_key = REDIS_PREFIX + namespace;
 	}
 	/**
-	* @param ids - IDs to lock in the namespace; an array or Set with 1–100 unique IDs after conversion to strings.
+	* @param ids - IDs to lock in the namespace; an array or Set with at least one unique ID after conversion to strings.
 	* @param ttl Time to live in milliseconds; a positive safe integer.
 	* @returns Lock object.
-	* @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
+	* @throws {RangeError} If there are no IDs or the TTL is not a positive safe integer.
 	*/
 	async lock(ids, ttl = this.#ttl) {
 		validateDuration(ttl);
 		const id_set = new Set(Array.from(ids, String));
-		if (id_set.size === 0 || id_set.size > 100) throw new RangeError("Multi-lock requests must contain between 1 and 100 unique IDs");
-		const lock_ids = [...id_set];
+		if (id_set.size === 0) throw new RangeError("Multi-lock requests must contain at least one ID.");
 		const token = randomBytes(16).toString("base64");
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
-			if (await this._scripts.multi_lock.executeWithKeys([this._redis_key], token, String(ttl), ...lock_ids) === 1) return new RedisXMultiLock(this, token, lock_ids);
+			if (await this._scripts.multi_lock.executeWithKeys([this._redis_key], token, String(ttl), ...id_set) === 1) return new RedisXMultiLock(this, token, [...id_set]);
 			if (try_id + 1 < this.#retry_count) await asyncTimeout(this.#retry_interval);
 		}
 		throw new RedisXLockerAcquireError();
