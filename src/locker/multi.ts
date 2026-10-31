@@ -56,10 +56,10 @@ export class RedisXMultiLocker {
 	}
 
 	/**
-	 * @param ids - IDs to lock in the namespace; an array or Set with 1–100 unique IDs after conversion to strings.
+	 * @param ids - IDs to lock in the namespace; an array or Set with at least one unique ID after conversion to strings.
 	 * @param ttl Time to live in milliseconds; a positive safe integer.
 	 * @returns Lock object.
-	 * @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
+	 * @throws {RangeError} If there are no IDs or the TTL is not a positive safe integer.
 	 */
 	async lock(
 		ids: (string | number)[] | Set<string | number>,
@@ -67,13 +67,10 @@ export class RedisXMultiLocker {
 	): Promise<RedisXMultiLock> {
 		validateDuration(ttl);
 		const id_set = new Set(Array.from(ids, String));
-		if (id_set.size === 0 || id_set.size > 100) {
-			throw new RangeError(
-				'Multi-lock requests must contain between 1 and 100 unique IDs',
-			);
+		if (id_set.size === 0) {
+			throw new RangeError('Multi-lock requests must contain at least one ID.');
 		}
 
-		const lock_ids = [...id_set];
 		const token = randomBytes(16).toString('base64');
 
 		for (let try_id = 0; try_id < this.#retry_count; try_id++) {
@@ -82,11 +79,11 @@ export class RedisXMultiLocker {
 				[this._redis_key],
 				token,
 				String(ttl),
-				...lock_ids,
+				...id_set,
 			);
 
 			if (result === 1) {
-				return new RedisXMultiLock(this, token, lock_ids);
+				return new RedisXMultiLock(this, token, [...id_set]);
 			}
 
 			if (try_id + 1 < this.#retry_count) {

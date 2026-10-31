@@ -311,27 +311,74 @@ test('expiration errors leave requested IDs available and existing locks intact'
 	await recovered.release();
 });
 
+// The scripts send IDs to Redis in packs of 1000, so 2500 IDs fill two packs and part of a third.
+const pack_ids = Array.from({ length: 2500 }, (_, index) => index);
+
 test.each(['array', 'set'])(
-	'locks, extends, and releases a 100-ID %s batch',
+	'locks, extends, and releases a %s batch of several packs',
 	async (kind) => {
 		const batch_locker = createLocker(`batch-${kind}`);
-		const ids = Array.from({ length: 100 }, (_, index) => index);
-		const lock = await batch_locker.lock(kind === 'array' ? ids : new Set(ids));
+		const lock = await batch_locker.lock(
+			kind === 'array' ? pack_ids : new Set(pack_ids),
+		);
 
 		await lock.extend(1000);
-		await expect(batch_locker.lock([99, 100])).rejects.toThrow(
+		// the default 5000 ms TTL plus the extension
+		for (const ttl of await remainingTtls(batch_locker, [
+			'0',
+			'1000',
+			'2499',
+		])) {
+			expect(ttl).toBeGreaterThan(5000);
+		}
+
+		await expect(batch_locker.lock([2499, 2500])).rejects.toThrow(
 			RedisXLockerAcquireError,
 		);
-		const disjoint = await batch_locker.lock([100]);
+		const disjoint = await batch_locker.lock([2500]);
 		await disjoint.release();
 		await lock.release();
 
-		const next = await batch_locker.lock(ids);
+		const next = await batch_locker.lock(pack_ids);
 		await next.release();
 	},
 );
 
-test('accepts an array of more than 100 duplicate IDs', async () => {
+test('locks nothing when only an ID in the last pack is taken', async () => {
+	const batch_locker = createLocker('batch-last-pack');
+	const taken = await batch_locker.lock([2499]);
+
+	await expect(batch_locker.lock(pack_ids)).rejects.toThrow(
+		RedisXLockerAcquireError,
+	);
+	const first_pack = await batch_locker.lock([0, 999]);
+	await first_pack.release();
+	await taken.release();
+});
+
+test('expiration errors remove the fields of every pack', async () => {
+	const batch_locker = createLocker('batch-invalid-expiration');
+
+	await expect(
+		batch_locker.lock(pack_ids, Number.MAX_SAFE_INTEGER),
+	).rejects.toThrow('invalid expire time');
+	expect(await redisClient.HLEN(batch_locker._redis_key)).toBe(0);
+});
+
+test('extends and releases nothing when an ID in the last pack has another owner', async () => {
+	const batch_locker = createLocker('batch-owner');
+	const lock = await batch_locker.lock(pack_ids);
+	await redisClient.HSET(batch_locker._redis_key, '2499', 'other');
+
+	const [before] = await remainingTtls(batch_locker, ['0']);
+	await expect(lock.extend(1000)).rejects.toThrow(RedisXLockerAcquireError);
+	await expect(lock.release()).rejects.toThrow(RedisXLockerReleaseError);
+	const [after] = await remainingTtls(batch_locker, ['0']);
+	expect(after).toBeGreaterThan(0);
+	expect(after).toBeLessThanOrEqual(before);
+});
+
+test('locks an array of repeated IDs as one ID', async () => {
 	const batch_locker = createLocker('batch-duplicates');
 	const lock = await batch_locker.lock(Array.from({ length: 150 }, () => 'id'));
 	await lock.extend(1000);

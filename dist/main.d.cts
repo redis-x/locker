@@ -30,10 +30,10 @@ export declare class RedisXMultiLocker {
     retry_count?: number;
   });
   /**
-   * @param ids - IDs to lock in the namespace; an array or Set with 1–100 unique IDs after conversion to strings.
+   * @param ids - IDs to lock in the namespace; an array or Set with at least one unique ID after conversion to strings.
    * @param ttl Time to live in milliseconds; a positive safe integer.
    * @returns Lock object.
-   * @throws {RangeError} If the unique ID count is outside 1–100 or the TTL is not a positive safe integer.
+   * @throws {RangeError} If there are no IDs or the TTL is not a positive safe integer.
    */
   lock(ids: (string | number)[] | Set<string | number>, ttl?: number): Promise<RedisXMultiLock>;
 }

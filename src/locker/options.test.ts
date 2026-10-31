@@ -225,24 +225,20 @@ describe.each(LOCKERS)('%s locker retry options', (_, Locker) => {
 	});
 });
 
-describe('multi-lock batch limits', () => {
-	test.each([0, 101, 5000])(
-		'rejects arrays and Sets of %s IDs before Redis commands',
-		async (count) => {
-			const { client, sendCommand } = createMockClient();
-			const locker = new RedisXMultiLocker(client, 'batch');
-			const ids = Array.from({ length: count }, (_, index) => index);
+describe('multi-lock batch size', () => {
+	test('rejects an empty array or Set before Redis commands', async () => {
+		const { client, sendCommand } = createMockClient();
+		const locker = new RedisXMultiLocker(client, 'batch');
 
-			await expect(locker.lock(ids)).rejects.toThrow(RangeError);
-			await expect(locker.lock(new Set(ids))).rejects.toThrow(RangeError);
-			expect(sendCommand).not.toHaveBeenCalled();
-		},
-	);
+		await expect(locker.lock([])).rejects.toThrow(RangeError);
+		await expect(locker.lock(new Set())).rejects.toThrow(RangeError);
+		expect(sendCommand).not.toHaveBeenCalled();
+	});
 
 	test('counts unique IDs after converting them to strings', async () => {
 		const { client, sendCommand } = createMockClient();
 		const locker = new RedisXMultiLocker(client, 'batch');
-		const ids = Array.from({ length: 100 }, (_, index) => index);
+		const ids = Array.from({ length: 5000 }, (_, index) => index);
 
 		await locker.lock([...ids, ...ids.map(String)]);
 		expect(sendCommand).toHaveBeenLastCalledWith([
@@ -254,11 +250,5 @@ describe('multi-lock batch limits', () => {
 			'5000',
 			...ids.map(String),
 		]);
-
-		sendCommand.mockClear();
-		await expect(
-			locker.lock([...ids, ...ids.map(String), 100]),
-		).rejects.toThrow(RangeError);
-		expect(sendCommand).not.toHaveBeenCalled();
 	});
 });
